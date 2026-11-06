@@ -79,6 +79,8 @@ export class BrowserService {
   private async warmUp(signal?: AbortSignal): Promise<void> {
     if (!this.config.workerUrl || !this.config.workerToken) return;
     const deadline = this.now() + 75_000;
+    const started = this.now();
+    let healthy = false;
     for (;;) {
       signal?.throwIfAborted();
       try {
@@ -87,12 +89,49 @@ export class BrowserService {
             ? AbortSignal.any([signal, AbortSignal.timeout(20000)])
             : AbortSignal.timeout(20000),
         });
-        if (response.ok) return;
+        if (response.ok) {
+          healthy = true;
+          break;
+        }
       } catch {
         // worker still waking up; fall through to the deadline check
       }
-      if (this.now() >= deadline) return;
+      if (this.now() >= deadline) break;
       await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+    // A slow health wait means the container just cold-booted. Its first
+    // Chromium launch is the slow part (~25-45s on the free box, sometimes past
+    // the worker's own 25s launch timeout) and would eat the real request's
+    // 45s budget. Absorb that launch here with a throwaway session on a fixed
+    // id (one saved profile, reused across cold starts) and close it after.
+    if (healthy && this.now() - started > 5_000) {
+      const headers = {
+        Authorization: `Bearer ${this.config.workerToken}`,
+        "Content-Type": "application/json",
+      };
+      try {
+        const response = await fetch(`${this.config.workerUrl}/sessions`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ id: "00000000-0000-4000-8000-0000000000aa", url: "https://example.com" }),
+          signal: signal
+            ? AbortSignal.any([signal, AbortSignal.timeout(Math.max(5_000, deadline - this.now()))])
+            : AbortSignal.timeout(Math.max(5_000, deadline - this.now())),
+        });
+        await response.arrayBuffer().catch(() => undefined);
+      } catch {
+        // best effort: the real request still gets its own attempt
+      }
+      try {
+        await fetch(`${this.config.workerUrl}/sessions/00000000-0000-4000-8000-0000000000aa/close`, {
+          method: "POST",
+          headers,
+          body: "{}",
+          signal: AbortSignal.timeout(10_000),
+        });
+      } catch {
+        // a leaked warm-up session only occupies a slot until the next cold start
+      }
     }
   }
   private async request(path: string, body?: unknown, signal?: AbortSignal) {
