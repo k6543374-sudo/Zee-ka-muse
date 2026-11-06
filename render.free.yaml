@@ -93,7 +93,6 @@ services:
   - type: web
     name: openmuse-web
     runtime: static
-    plan: free
     buildCommand: >-
       pnpm install --frozen-lockfile &&
       pnpm --dir apps/mobile exec expo export --platform web --output-dir dist/web --clear
