@@ -300,7 +300,7 @@ export class ConversationAgent extends AbstractAgent {
               parameters: z.object({ url: z.url().max(4096) }),
               execute: async ({ url }) => {
                 const callStart = Date.now();
-                trace("browse_web start", input.runId, url, "abortedAtEntry=", browserAbort.signal.aborted);
+                trace("browse_web start", input.runId, "url-origin", new URL(url).origin, "abortedAtEntry=", browserAbort.signal.aborted);
                 browserAbort.signal.throwIfAborted();
                 try {
                   const page = await this.service.browser.observeForThread(
@@ -426,7 +426,7 @@ export class ConversationAgent extends AbstractAgent {
     return this.expireOnUserTurn(
       new Observable((subscriber) => {
         const runStart = Date.now();
-        trace("chat run start", input.runId, "thread", input.threadId);
+        trace("chat run start", input.runId);
         const subscription = agent
           .run({ ...input, tools: input.tools.filter((t) => t.name === "open_workspace") })
           .subscribe(subscriber);

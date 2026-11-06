@@ -45,7 +45,10 @@ export async function createWorkerServer(
   const browser = await createBrowser(options);
   const server = createServer(async (request, response) => {
     const reqStart = Date.now();
-    const reqPath = `${request.method} ${new URL(request.url ?? "/", "http://worker").pathname}`;
+    const reqPath = `${request.method} ${new URL(request.url ?? "/", "http://worker").pathname}`.replace(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+      ":id",
+    );
     console.log("[openmuse-trace]", new Date().toISOString(), "worker request", reqPath);
     response.setHeader("cache-control", "no-store");
     response.setHeader("x-content-type-options", "nosniff");

@@ -30,6 +30,8 @@ const failureSchema = z.object({
 });
 type ChatBrowser = { id: string; sessionId: string };
 
+const redactPath = (p: string) =>
+  p.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, ":id");
 const trace = (...args: unknown[]) =>
   console.log("[openmuse-trace]", new Date().toISOString(), ...args);
 
@@ -169,17 +171,17 @@ export class BrowserService {
           ? AbortSignal.any([signal, AbortSignal.timeout(45000)])
           : AbortSignal.timeout(45000),
       });
-    trace("browser request", path, body === undefined ? "GET" : "POST");
+    trace("browser request", redactPath(path), body === undefined ? "GET" : "POST");
     await this.warmUp(signal);
     let response: Response;
     const sendStart = this.now();
     try {
       response = await send();
-      trace("browser response", path, response.status, this.now() - sendStart, "ms");
+      trace("browser response", redactPath(path), response.status, this.now() - sendStart, "ms");
     } catch (firstError) {
       trace(
         "browser send error",
-        path,
+        redactPath(path),
         firstError instanceof Error ? `${firstError.name}: ${firstError.message}` : String(firstError),
         this.now() - sendStart,
         "ms",
@@ -320,7 +322,7 @@ export class BrowserService {
       (await this.db.get<ChatBrowser>(owner, "chat-browsers", threadId));
     if (!association) throw new AppError("Could not reserve the chat browser session", 500);
     const id = association.sessionId;
-    trace("observeForThread", threadId, "session", id, url);
+    trace("observeForThread", "url-origin", new URL(url).origin);
     await this.db.insertIfAbsent(owner, "browsers", {
       id,
       url,
