@@ -32,8 +32,10 @@ type ChatBrowser = { id: string; sessionId: string };
 
 const redactPath = (p: string) =>
   p.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, ":id");
-const trace = (...args: unknown[]) =>
-  console.log("[openmuse-trace]", new Date().toISOString(), ...args);
+const TRACE_ENABLED = process.env.OPENMUSE_TRACE === "1";
+const trace = (...args: unknown[]) => {
+  if (TRACE_ENABLED) console.log("[openmuse-trace]", new Date().toISOString(), ...args);
+};
 
 const BROWSER_SESSION_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

@@ -49,13 +49,15 @@ export async function createWorkerServer(
       /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
       ":id",
     );
-    console.log("[openmuse-trace]", new Date().toISOString(), "worker request", reqPath);
+    if (process.env.OPENMUSE_TRACE === "1")
+      console.log("[openmuse-trace]", new Date().toISOString(), "worker request", reqPath);
     response.setHeader("cache-control", "no-store");
     response.setHeader("x-content-type-options", "nosniff");
     const json = (status: number, body: unknown) => {
       response.writeHead(status, { "content-type": "application/json; charset=utf-8" });
       response.end(JSON.stringify(body));
-      console.log("[openmuse-trace]", new Date().toISOString(), "worker response", reqPath, status, Date.now() - reqStart, "ms");
+      if (process.env.OPENMUSE_TRACE === "1")
+        console.log("[openmuse-trace]", new Date().toISOString(), "worker response", reqPath, status, Date.now() - reqStart, "ms");
     };
     try {
       const pathname = new URL(request.url ?? "/", "http://worker").pathname;

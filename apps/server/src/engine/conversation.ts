@@ -27,8 +27,10 @@ function clipCalendarText(text: string, limit: number) {
   return text.length > limit && /[\uD800-\uDBFF]$/.test(clipped) ? clipped.slice(0, -1) : clipped;
 }
 
-const trace = (...args: unknown[]) =>
-  console.log("[openmuse-trace]", new Date().toISOString(), ...args);
+const TRACE_ENABLED = process.env.OPENMUSE_TRACE === "1";
+const trace = (...args: unknown[]) => {
+  if (TRACE_ENABLED) console.log("[openmuse-trace]", new Date().toISOString(), ...args);
+};
 
 export class ConversationAgent extends AbstractAgent {
   constructor(
