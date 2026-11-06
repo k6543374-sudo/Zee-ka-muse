@@ -1,0 +1,110 @@
+# Free-plan Render blueprint for OpenMuse (Zee-ka-muse).
+# Differences from stock render.yaml:
+#  - plan: free (no disks on free; persistence comes from Supabase: DATABASE_URL
+#    for records and SUPABASE_STORAGE_BUCKET for files).
+#  - DATABASE_URL is REQUIRED on free: the default PGlite store loads an embedded
+#    Postgres WASM build that gets a 512 MB instance OOM-killed before bind.
+#  - Browser worker runs as a free PUBLIC docker web service (user approved
+#    testing this route on Nov 6): apps/worker/src/index.ts now binds $PORT.
+#    Chromium at 512 MB may OOM on heavy pages; no uptime monitor pings it, so
+#    it spins down idle and cold-starts (~1 min) on first browse.
+#  - Static web UI is deployed as a separate free static site.
+services:
+  - type: web
+    name: openmuse-api
+    runtime: node
+    plan: free
+    buildCommand: pnpm install --frozen-lockfile && pnpm build:server
+    startCommand: pnpm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: WORKSPACE_MODE
+        value: live
+      - key: AGENT_BACKEND
+        value: model
+      # web2api (zee120-brain) endpoint; OPENAI_CHAT_COMPLETIONS keeps the
+      # adapter on /chat/completions for the OpenAI-compatible worker.
+      - key: MODEL
+        sync: false
+      - key: OPENAI_BASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_CHAT_COMPLETIONS
+        value: "true"
+      # Supabase session-pooler string with sslmode=require (REQUIRED on free).
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: openmuse-files
+      - key: TASK_WORKER_ENABLED
+        value: "true"
+      - key: PUBLIC_API_URL
+        fromService:
+          name: openmuse-api
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: ALLOWED_ORIGINS
+        fromService:
+          name: openmuse-web
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: OPENMUSE_ACCESS_KEY
+        generateValue: true
+      - key: TOKEN_ENCRYPTION_KEY
+        generateValue: true
+      - key: CPK_INTELLIGENCE_API_KEY
+        sync: false
+      - key: CPK_TELEMETRY_ID
+        sync: false
+      # Browsing: points at the openmuse-browser free web service below.
+      - key: BROWSER_WORKER_URL
+        fromService:
+          name: openmuse-browser
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: WORKER_TOKEN
+        fromService:
+          name: openmuse-browser
+          type: web
+          envVarKey: WORKER_TOKEN
+
+  # Private Chromium for page reads, screenshots, and Take control.
+  # Free plan: no disk (profiles reset on redeploy), must bind $PORT.
+  - type: web
+    name: openmuse-browser
+    runtime: docker
+    plan: free
+    dockerfilePath: ./apps/worker/Dockerfile
+    dockerContext: ./apps/worker
+    healthCheckPath: /health
+    envVars:
+      - key: WORKER_TOKEN
+        generateValue: true
+      - key: WORKER_HOST
+        value: 0.0.0.0
+
+  - type: web
+    name: openmuse-web
+    runtime: static
+    plan: free
+    buildCommand: >-
+      pnpm install --frozen-lockfile &&
+      pnpm --dir apps/mobile exec expo export --platform web --output-dir dist/web --clear
+    staticPublishPath: apps/mobile/dist/web
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: EXPO_PUBLIC_API_URL
+        fromService:
+          name: openmuse-api
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
