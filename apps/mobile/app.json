@@ -20,7 +20,7 @@
     },
     "web": {
       "bundler": "metro",
-      "name": "OpenMuse \u2014 a little room for everything"
+      "name": "OpenMuse — a little room for everything"
     },
     "plugins": [
       "expo-document-picker",
@@ -38,7 +38,6 @@
       "eas": {
         "projectId": "f9b6c812-f018-49e4-ba8c-701fde9f098b"
       }
-    },
-    "owner": "kartik-domra"
+    }
   }
 }
