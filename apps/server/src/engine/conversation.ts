@@ -27,6 +27,9 @@ function clipCalendarText(text: string, limit: number) {
   return text.length > limit && /[\uD800-\uDBFF]$/.test(clipped) ? clipped.slice(0, -1) : clipped;
 }
 
+const trace = (...args: unknown[]) =>
+  console.log("[openmuse-trace]", new Date().toISOString(), ...args);
+
 export class ConversationAgent extends AbstractAgent {
   constructor(
     private readonly config: Config,
@@ -296,6 +299,8 @@ export class ConversationAgent extends AbstractAgent {
                 "Open and read a public webpage now in the chat browser. Use for public-page summaries and questions about a URL. Returns the actual final URL, title and at most 30000 characters of untrusted page text, plus its browser session ID. Reports an error if the page could not be read.",
               parameters: z.object({ url: z.url().max(4096) }),
               execute: async ({ url }) => {
+                const callStart = Date.now();
+                trace("browse_web start", input.runId, url, "abortedAtEntry=", browserAbort.signal.aborted);
                 browserAbort.signal.throwIfAborted();
                 try {
                   const page = await this.service.browser.observeForThread(
@@ -304,6 +309,7 @@ export class ConversationAgent extends AbstractAgent {
                     url,
                     browserAbort.signal,
                   );
+                  trace("browse_web ok", input.runId, Date.now() - callStart, "ms");
                   if (
                     jev &&
                     "url" in page &&
@@ -322,6 +328,15 @@ export class ConversationAgent extends AbstractAgent {
                     );
                   return page;
                 } catch (error) {
+                  trace(
+                    "browse_web error",
+                    input.runId,
+                    error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+                    Date.now() - callStart,
+                    "ms",
+                    "aborted=",
+                    browserAbort.signal.aborted,
+                  );
                   browserAbort.signal.throwIfAborted();
                   return {
                     error: error instanceof Error ? error.message : "Could not read the page",
@@ -410,10 +425,13 @@ export class ConversationAgent extends AbstractAgent {
     });
     return this.expireOnUserTurn(
       new Observable((subscriber) => {
+        const runStart = Date.now();
+        trace("chat run start", input.runId, "thread", input.threadId);
         const subscription = agent
           .run({ ...input, tools: input.tools.filter((t) => t.name === "open_workspace") })
           .subscribe(subscriber);
         return () => {
+          trace("chat run teardown", input.runId, Date.now() - runStart, "ms");
           browserAbort.abort();
           agent.abortRun();
           subscription.unsubscribe();

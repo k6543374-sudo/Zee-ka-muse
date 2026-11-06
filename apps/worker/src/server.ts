@@ -44,11 +44,15 @@ export async function createWorkerServer(
   const tokenHash = createHash("sha256").update(`Bearer ${options.token}`).digest();
   const browser = await createBrowser(options);
   const server = createServer(async (request, response) => {
+    const reqStart = Date.now();
+    const reqPath = `${request.method} ${new URL(request.url ?? "/", "http://worker").pathname}`;
+    console.log("[openmuse-trace]", new Date().toISOString(), "worker request", reqPath);
     response.setHeader("cache-control", "no-store");
     response.setHeader("x-content-type-options", "nosniff");
     const json = (status: number, body: unknown) => {
       response.writeHead(status, { "content-type": "application/json; charset=utf-8" });
       response.end(JSON.stringify(body));
+      console.log("[openmuse-trace]", new Date().toISOString(), "worker response", reqPath, status, Date.now() - reqStart, "ms");
     };
     try {
       const pathname = new URL(request.url ?? "/", "http://worker").pathname;

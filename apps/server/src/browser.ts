@@ -30,6 +30,9 @@ const failureSchema = z.object({
 });
 type ChatBrowser = { id: string; sessionId: string };
 
+const trace = (...args: unknown[]) =>
+  console.log("[openmuse-trace]", new Date().toISOString(), ...args);
+
 const BROWSER_SESSION_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -85,24 +88,36 @@ export class BrowserService {
     const deadline = this.now() + 105_000;
     const started = this.now();
     let healthy = false;
+    trace("warmup start");
     for (;;) {
-      signal?.throwIfAborted();
+      if (signal?.aborted) {
+        trace("warmup aborted-before-poll", this.now() - started, "ms");
+        signal.throwIfAborted();
+      }
+      const pollStart = this.now();
       try {
         const response = await fetch(`${this.config.workerUrl}/health`, {
           signal: signal
             ? AbortSignal.any([signal, AbortSignal.timeout(60000)])
             : AbortSignal.timeout(60000),
         });
+        trace("warmup poll", response.status, this.now() - pollStart, "ms");
         if (response.ok) {
           healthy = true;
           break;
         }
-      } catch {
-        // worker still waking up; fall through to the deadline check
+      } catch (pollError) {
+        trace(
+          "warmup poll error",
+          pollError instanceof Error ? `${pollError.name}: ${pollError.message}` : String(pollError),
+          this.now() - pollStart,
+          "ms",
+        );
       }
       if (this.now() >= deadline) break;
       await new Promise((resolve) => setTimeout(resolve, 1500));
     }
+    trace("warmup done healthy=", healthy, (this.now() - started) / 1000, "s");
     // A slow health wait means the container just cold-booted. Its first
     // Chromium launch is the slow part (~25-45s on the free box, sometimes past
     // the worker's own 25s launch timeout) and would eat the real request's
@@ -154,11 +169,23 @@ export class BrowserService {
           ? AbortSignal.any([signal, AbortSignal.timeout(45000)])
           : AbortSignal.timeout(45000),
       });
+    trace("browser request", path, body === undefined ? "GET" : "POST");
     await this.warmUp(signal);
     let response: Response;
+    const sendStart = this.now();
     try {
       response = await send();
+      trace("browser response", path, response.status, this.now() - sendStart, "ms");
     } catch (firstError) {
+      trace(
+        "browser send error",
+        path,
+        firstError instanceof Error ? `${firstError.name}: ${firstError.message}` : String(firstError),
+        this.now() - sendStart,
+        "ms",
+        "aborted=",
+        signal?.aborted ?? false,
+      );
       signal?.throwIfAborted();
       // Retry only read-only GETs: a POST may have reached the worker before the
       // failure, and repeating it could duplicate a side-effecting browser action.
@@ -293,6 +320,7 @@ export class BrowserService {
       (await this.db.get<ChatBrowser>(owner, "chat-browsers", threadId));
     if (!association) throw new AppError("Could not reserve the chat browser session", 500);
     const id = association.sessionId;
+    trace("observeForThread", threadId, "session", id, url);
     await this.db.insertIfAbsent(owner, "browsers", {
       id,
       url,
