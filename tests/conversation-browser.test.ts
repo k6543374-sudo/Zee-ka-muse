@@ -123,7 +123,12 @@ test("chat browse_web emits an honest completed error result when navigation fai
   );
   const result = events.find((event) => event.type === EventType.TOOL_CALL_RESULT);
   assert.ok(result && result.type === EventType.TOOL_CALL_RESULT);
-  assert.deepEqual(JSON.parse(result.content), { error: "Public page could not be opened" });
+  assert.deepEqual(JSON.parse(result.content), {
+    error: "Public page could not be opened",
+    pageRead: false,
+    instruction:
+      "The page was not read. Tell the user the read failed with this error. Do not state or guess the page's current contents from memory.",
+  });
   assert.ok(requests[1].body.includes("Public page could not be opened"));
   assert.deepEqual(fixture.browserCalls, ["/sessions"]);
   assert.equal((await fixture.db.list("local-user", "tasks")).length, 0);
