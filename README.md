@@ -254,3 +254,11 @@ Platform build scripts export JavaScript/Hermes bundles; they do not produce sig
 Issues and pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), [ROADMAP.md](ROADMAP.md), and the [security policy](SECURITY.md).
 
 MIT licensed. Built by CopilotKit. Its original interface and fictional assets are included. Website, email, and document content supplies evidence, not permission to act.
+
+---
+
+## Zee-ka-muse deployment notes (Nov 6, 2026)
+
+- Deploy blueprint: `render.free.yaml` (free plan: API + public docker browser worker + static web). Supabase provides persistence (`DATABASE_URL` + storage bucket); Render free has no disks.
+- `apps/worker/src/index.ts` patched to bind `$PORT` so the worker can run as a free Render web service.
+- Packaging caveat: upstream `.github/workflows/ci.yml` is intentionally omitted from this repo - pushing workflow files requires a broader token scope than the upload credential has. CI is not needed for deployment; restore it later if wanted.
