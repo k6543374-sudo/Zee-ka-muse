@@ -95,10 +95,18 @@ test("explicit fresh-read question forces a live read even when the model calls 
     fx.browserCalls.includes(`/sessions/${priorSessionId}/read`),
     `calls: ${fx.browserCalls.join(",")}`,
   );
-  // The model's first (and only) request carries the fresh page text as context.
+  // The model's first (and only) request carries the fresh page text as a synthetic
+  // browse_web function_call + function_call_output pair (the channel the model honors
+  // when it calls the tool itself), plus a directive context note.
   assert.equal(requests.length, 1);
   assert.ok(requests[0].body.includes(pageText), "fresh page text missing from model input");
-  assert.ok(requests[0].body.includes("CURRENT content"), "fresh-read instruction missing");
+  assert.ok(
+    requests[0].body.includes('"type":"function_call"') &&
+      requests[0].body.includes('"type":"function_call_output"'),
+    "synthetic browse_web call/result pair missing",
+  );
+  assert.ok(requests[0].body.includes("browse_web"), "synthetic browse_web call missing");
+  assert.ok(requests[0].body.includes("read from the live page just now"), "fresh-read instruction missing");
 });
 
 test("repeating the same question after the source changed forces a new read of new content", async (t) => {

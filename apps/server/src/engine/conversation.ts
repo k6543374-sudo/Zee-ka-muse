@@ -64,8 +64,13 @@ export class ConversationAgent extends AbstractAgent {
    * the pageRead:false prompt guard only engages when the tool is called and fails).
    * For an explicit fresh-read question with a confident target (a URL in the message,
    * or the thread's own prior browsed page when the message names it), read the page
-   * NOW server-side and put the outcome into the run context: fresh page text, or an
-   * explicit UNVERIFIED state. The model never gets a silent stale-answer path.
+   * NOW server-side and hand the outcome to the model as a synthetic browse_web
+   * tool call + result pair, the same message shape the model demonstrably answers
+   * from when it calls the tool itself. Measured 2026-11-06 (c1de4de live e2e): a
+   * system-prompt context block carrying the same fresh text lost to repeated stale
+   * chat history, so context alone is not the channel. On failure the tool result
+   * carries the exact browse_web error shape with pageRead:false, and a short context
+   * note marks the current state UNVERIFIED.
    */
   private async resolveFreshReadUrl(threadId: string, text: string): Promise<string | undefined> {
     const explicit = text.match(EXPLICIT_URL)?.[0];
@@ -102,6 +107,19 @@ export class ConversationAgent extends AbstractAgent {
     if (!url) return input;
     const at = new Date().toISOString();
     trace("fresh read forced", input.runId, "url-origin", new URL(url).origin);
+    const callId = `freshread-${randomUUID()}`;
+    const syntheticCall = {
+      id: `freshread-call-${randomUUID()}`,
+      role: "assistant" as const,
+      content: "",
+      toolCalls: [
+        {
+          id: callId,
+          type: "function" as const,
+          function: { name: "browse_web", arguments: JSON.stringify({ url }) },
+        },
+      ],
+    };
     try {
       const page = await this.service.browser.observeForThread(
         this.owner,
@@ -111,23 +129,49 @@ export class ConversationAgent extends AbstractAgent {
       );
       return {
         ...input,
+        messages: [
+          ...input.messages,
+          syntheticCall,
+          {
+            id: `freshread-result-${randomUUID()}`,
+            role: "tool" as const,
+            toolCallId: callId,
+            content: JSON.stringify(page),
+          },
+        ],
         context: [
           ...input.context,
           {
             description: `Live read performed at ${at} for this request: ${page.url} ("${page.title}")`,
-            value: `This is the page's CURRENT content. Answer current-state questions from it, cite its URL, and prefer it over anything earlier in this conversation. If it does not cover the question, say what the fresh page does not show.\n\n${page.text.slice(0, 6000)}${page.truncated ? "\n[page text truncated]" : ""}`,
+            value: `The browse_web tool result above was read from the live page just now for this request. Answer current-state questions from it, cite its URL, and prefer it over anything earlier in this conversation. If it does not cover the question, say what the fresh page does not show.`,
           },
         ],
       };
     } catch (error) {
       signal?.throwIfAborted();
+      const message = error instanceof Error ? error.message : String(error);
       return {
         ...input,
+        messages: [
+          ...input.messages,
+          syntheticCall,
+          {
+            id: `freshread-result-${randomUUID()}`,
+            role: "tool" as const,
+            toolCallId: callId,
+            content: JSON.stringify({
+              error: message,
+              pageRead: false,
+              instruction:
+                "The page was not read. Tell the user the read failed with this error. Do not state or guess the page's current contents from memory.",
+            }),
+          },
+        ],
         context: [
           ...input.context,
           {
             description: `Live read of ${url} attempted at ${at} for this request FAILED`,
-            value: `The page's current state is UNVERIFIED: ${error instanceof Error ? error.message : String(error)}. Tell the user the live read failed with this error. Do not repeat or rely on earlier answers or memory about the page's current contents.`,
+            value: `The page's current state is UNVERIFIED: ${message}. Tell the user the live read failed with this error. Do not repeat or rely on earlier answers or memory about the page's current contents.`,
           },
         ],
       };
