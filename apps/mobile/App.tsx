@@ -47,6 +47,7 @@ import {
 } from "./src/settings";
 import { ChatScreen, WorkspaceTools } from "./src/chat";
 import { ComputerEntry } from "./src/computer";
+import { wakeWorkerOnce } from "./src/worker-wake";
 import { ComputerDraftProvider } from "./src/computer-drafts";
 import { Details } from "./src/details";
 import { BrowserScreen, CalendarScreen, FilesScreen, MailScreen } from "./src/screens";
@@ -230,6 +231,8 @@ function WorkspaceApp({
   const refresh = useCallback(async () => {
     const snapshot = await api.request<Workspace>("/api/workspace");
     setWorkspace(snapshot);
+    const browser = snapshot.connections.find((c) => c.id === "browser");
+    wakeWorkerOnce(browser?.wakeUrl, browser?.status === "unavailable");
     setError("");
   }, [api]);
   useEffect(() => {

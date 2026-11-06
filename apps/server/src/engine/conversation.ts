@@ -340,6 +340,9 @@ export class ConversationAgent extends AbstractAgent {
                   browserAbort.signal.throwIfAborted();
                   return {
                     error: error instanceof Error ? error.message : "Could not read the page",
+                    pageRead: false,
+                    instruction:
+                      "The page was not read. Tell the user the read failed with this error. Do not state or guess the page's current contents from memory.",
                   };
                 }
               },

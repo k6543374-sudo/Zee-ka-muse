@@ -183,6 +183,8 @@ export interface Connection {
   status: "connected" | "disconnected" | "sample" | "unconfigured" | "unavailable";
   account?: string;
   capabilities: string[];
+  /** Public https URL a client may ping to wake a sleeping free-tier worker. Never carries a token. */
+  wakeUrl?: string;
 }
 export interface Workspace {
   mode: WorkspaceMode;

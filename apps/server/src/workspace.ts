@@ -352,6 +352,12 @@ export class WorkspaceService {
           name: "Browser",
           status: this.config.workerUrl && this.config.workerToken ? "connected" : "unconfigured",
           capabilities: ["Persistent sessions", "PDF downloads"],
+          // Public, unauthenticated (/health) worker URL: measured on 2026-11-06, requests
+          // from inside Render's network get an instant 502 against the sleeping free
+          // worker and never boot it, while external requests do. Clients ping this to wake.
+          ...(this.config.workerUrl?.startsWith("https://")
+            ? { wakeUrl: this.config.workerUrl }
+            : {}),
         },
         {
           id: "openbot",
