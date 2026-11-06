@@ -73,12 +73,16 @@ export class BrowserService {
   /**
    * Wake a cold free-tier worker before real calls: Render spin-down restarts
    * were measured at ~42s, past the 45s request budget, so the first browse
-   * after idle failed. Bounded: gives up at the deadline and lets the real
-   * request try anyway; honours caller cancellation.
+   * after idle failed. Each health poll must HOLD longer than that cold start:
+   * a poll that aborts at 20s never lets Render finish booting the instance
+   * (observed 2026-11-06: 75s of 20s polls produced no boot, while two held
+   * 42s probes both did - provisional correlation, retest confirms). Bounded:
+   * gives up at the deadline and lets the real request try anyway; honours
+   * caller cancellation.
    */
   private async warmUp(signal?: AbortSignal): Promise<void> {
     if (!this.config.workerUrl || !this.config.workerToken) return;
-    const deadline = this.now() + 75_000;
+    const deadline = this.now() + 105_000;
     const started = this.now();
     let healthy = false;
     for (;;) {
@@ -86,8 +90,8 @@ export class BrowserService {
       try {
         const response = await fetch(`${this.config.workerUrl}/health`, {
           signal: signal
-            ? AbortSignal.any([signal, AbortSignal.timeout(20000)])
-            : AbortSignal.timeout(20000),
+            ? AbortSignal.any([signal, AbortSignal.timeout(60000)])
+            : AbortSignal.timeout(60000),
         });
         if (response.ok) {
           healthy = true;
