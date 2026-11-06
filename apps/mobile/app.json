@@ -7,13 +7,38 @@
     "orientation": "default",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-    "ios": { "supportsTablet": true, "bundleIdentifier": "app.openmuse.mobile" },
-    "android": { "package": "app.openmuse.mobile" },
-    "web": { "bundler": "metro", "name": "OpenMuse — a little room for everything" },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.openmuse.mobile"
+    },
+    "android": {
+      "package": "app.openmuse.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/capybara.png",
+        "backgroundColor": "#FCFCFC"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "name": "OpenMuse \u2014 a little room for everything"
+    },
     "plugins": [
       "expo-document-picker",
       "@config-plugins/react-native-blob-util",
-      "@config-plugins/react-native-pdf"
-    ]
+      "@config-plugins/react-native-pdf",
+      "expo-secure-store"
+    ],
+    "icon": "./assets/capybara.png",
+    "splash": {
+      "image": "./assets/capybara.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FCFCFC"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "f9b6c812-f018-49e4-ba8c-701fde9f098b"
+      }
+    },
+    "owner": "kartik-domra"
   }
 }

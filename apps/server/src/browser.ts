@@ -70,13 +70,37 @@ export class BrowserService {
       if (this.queues.get(id) === next) this.queues.delete(id);
     }
   }
+  /**
+   * Wake a cold free-tier worker before real calls: Render spin-down restarts
+   * were measured at ~42s, past the 45s request budget, so the first browse
+   * after idle failed. Bounded: gives up at the deadline and lets the real
+   * request try anyway; honours caller cancellation.
+   */
+  private async warmUp(signal?: AbortSignal): Promise<void> {
+    if (!this.config.workerUrl || !this.config.workerToken) return;
+    const deadline = this.now() + 75_000;
+    for (;;) {
+      signal?.throwIfAborted();
+      try {
+        const response = await fetch(`${this.config.workerUrl}/health`, {
+          signal: signal
+            ? AbortSignal.any([signal, AbortSignal.timeout(20000)])
+            : AbortSignal.timeout(20000),
+        });
+        if (response.ok) return;
+      } catch {
+        // worker still waking up; fall through to the deadline check
+      }
+      if (this.now() >= deadline) return;
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+  }
   private async request(path: string, body?: unknown, signal?: AbortSignal) {
     signal?.throwIfAborted();
     if (!this.config.workerUrl || !this.config.workerToken)
       throw new AppError("Browser worker is not configured. Start it using the setup guide.", 503);
-    let response: Response;
-    try {
-      response = await fetch(`${this.config.workerUrl}${path}`, {
+    const send = () =>
+      fetch(`${this.config.workerUrl}${path}`, {
         method: body === undefined ? "GET" : "POST",
         headers: {
           Authorization: `Bearer ${this.config.workerToken}`,
@@ -87,12 +111,34 @@ export class BrowserService {
           ? AbortSignal.any([signal, AbortSignal.timeout(45000)])
           : AbortSignal.timeout(45000),
       });
-    } catch {
+    await this.warmUp(signal);
+    let response: Response;
+    try {
+      response = await send();
+    } catch (firstError) {
       signal?.throwIfAborted();
-      throw new AppError(
-        "Browser worker is unavailable. Check that its container is running.",
-        503,
-      );
+      // Retry only read-only GETs: a POST may have reached the worker before the
+      // failure, and repeating it could duplicate a side-effecting browser action.
+      // GETs are idempotent page reads, so one bounded retry after re-warming is
+      // safe; it never loops, and caller cancellation still wins.
+      if (body !== undefined) {
+        throw firstError instanceof AppError
+          ? firstError
+          : new AppError(
+              "Browser worker is unavailable. Check that its container is running.",
+              503,
+            );
+      }
+      await this.warmUp(signal);
+      try {
+        response = await send();
+      } catch {
+        signal?.throwIfAborted();
+        throw new AppError(
+          "Browser worker is unavailable. Check that its container is running.",
+          503,
+        );
+      }
     }
     if (!response.ok) {
       const payload = await response.json().catch(() => null);

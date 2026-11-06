@@ -1,0 +1,10 @@
+{
+  "cli": { "version": ">= 14.0.0" },
+  "build": {
+    "release": {
+      "android": { "buildType": "apk" },
+      "env": { "EXPO_PUBLIC_API_URL": "https://openmuse-api-nk5t.onrender.com" },
+      "credentialsSource": "local"
+    }
+  }
+}

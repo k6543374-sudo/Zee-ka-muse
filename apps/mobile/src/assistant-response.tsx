@@ -5,7 +5,7 @@ import { assistantMarkdown, isSafeAssistantUrl } from "./assistant-markdown";
 import { colors, ErrorNotice } from "./ui";
 
 const textStyle = { color: colors.text, fontSize: 16, lineHeight: 24 };
-const style: Partial<MarkdownStyles> = {
+const buildStyle = (): Partial<MarkdownStyles> => ({
   text: textStyle,
   paragraph: { marginTop: 0, marginBottom: 6 },
   list: { marginBottom: 6 },
@@ -16,7 +16,7 @@ const style: Partial<MarkdownStyles> = {
   link: { color: colors.blueDark, textDecorationLine: "underline" },
   codeInline: { backgroundColor: "#E2E4E7", color: colors.text },
   codeBlock: { backgroundColor: "#E2E4E7", color: colors.text },
-};
+});
 const renderCodeBlock: RenderRules["fence"] = (node, _children, _parent, styles) => (
   <Text key={node.key} selectable style={styles.codeBlock as TextStyle}>
     {node.content.replace(/\n$/, "")}
@@ -51,7 +51,7 @@ export function AssistantResponse({ content }: { content: string }) {
     <>
       <Markdown
         markdownit={assistantMarkdown}
-        style={style}
+        style={buildStyle()}
         rules={rules}
         onLinkPress={onLinkPress}
       >

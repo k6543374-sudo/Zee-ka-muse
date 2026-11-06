@@ -142,7 +142,7 @@ export function Button({
       onPress={onPress}
       style={({ pressed }) => [
         s.button,
-        primary ? s.primary : s.secondary,
+        primary ? { backgroundColor: colors.blue } : s.secondary,
         small && { minHeight: 38, paddingVertical: 7, paddingHorizontal: 13 },
         (disabled || busy) && { opacity: 0.5 },
         pressed && { transform: [{ scale: 0.98 }] },
@@ -399,6 +399,11 @@ export function LinkRow({
     </Pressable>
   );
 }
+let logoOverride: string | null = null;
+/** Override the mascot image app-wide with the user's custom logo; null restores the capybara. */
+export function setLogoOverride(uri: string | null): void {
+  logoOverride = uri || null;
+}
 /** OpenMuse's original capybara, shared by every assistant surface. */
 export function Mascot({
   size = 42,
@@ -426,7 +431,7 @@ export function Mascot({
         }}
       />
       <Image
-        source={require("../assets/capybara.png")}
+        source={logoOverride ? { uri: logoOverride } : require("../assets/capybara.png")}
         resizeMode="contain"
         style={{ width: size, height: size }}
         accessible={false}

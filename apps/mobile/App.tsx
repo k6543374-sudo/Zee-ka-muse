@@ -8,6 +8,7 @@ import {
   Menu,
   MessageCircle,
   PanelsTopLeft,
+  Settings as SettingsIcon,
   Shapes,
   SquareCheck,
   X,
@@ -33,6 +34,17 @@ import {
 } from "./src/agent-ui";
 import { AgentWorkspaceProvider, useAgentWorkspace } from "./src/agent-workspace";
 import { API_URL, createSession, MuseApi } from "./src/api";
+import { SettingsSheet } from "./src/SettingsSheet";
+import {
+  applySettings,
+  clearAccessKey,
+  defaultSettings,
+  loadAccessKey,
+  loadSettings,
+  saveAccessKey,
+  saveSettings,
+  type AppSettings,
+} from "./src/settings";
 import { ChatScreen, WorkspaceTools } from "./src/chat";
 import { ComputerEntry } from "./src/computer";
 import { ComputerDraftProvider } from "./src/computer-drafts";
@@ -77,24 +89,77 @@ export default function App() {
     try {
       const session = await createSession(key);
       setToken(session.token);
+      if (key) void saveAccessKey(key);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
   }, []);
+  const [settings, setSettings] = useState<AppSettings>(defaultSettings);
+  const [settingsReady, setSettingsReady] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [themeTick, setThemeTick] = useState(0);
+  const savePrefs = useCallback((next: AppSettings) => {
+    setSettings(next);
+    applySettings(next);
+    void saveSettings(next);
+    setThemeTick((tick) => tick + 1);
+  }, []);
+  const signOut = useCallback(() => {
+    void clearAccessKey();
+    setAccessKey("");
+    setToken("");
+    setSettingsOpen(false);
+  }, []);
   useEffect(() => {
-    void connect();
+    void (async () => {
+      const stored = await loadSettings();
+      applySettings(stored);
+      setSettings(stored);
+      setThemeTick((tick) => tick + 1);
+      setSettingsReady(true);
+      const remembered = await loadAccessKey();
+      void connect(remembered || undefined);
+    })();
   }, [connect]);
+  if (!settingsReady)
+    return (
+      <SafeAreaProvider>
+        <StatusBar style="dark" />
+        <SafeAreaView
+          style={{
+            flex: 1,
+            backgroundColor: colors.canvas,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <ActivityIndicator color={colors.blueDark} />
+        </SafeAreaView>
+      </SafeAreaProvider>
+    );
   return (
-    <SafeAreaProvider>
+    <SafeAreaProvider key={themeTick}>
       <StatusBar style="dark" />
+      <SettingsSheet
+        visible={settingsOpen}
+        settings={settings}
+        onSave={savePrefs}
+        onClose={() => setSettingsOpen(false)}
+        onSignOut={signOut}
+      />
       {token ? (
         <CopilotKitProvider
           runtimeUrl={`${API_URL}/api/copilotkit`}
           headers={{ Authorization: `Bearer ${token}` }}
         >
-          <WorkspaceApp token={token} />
+          <WorkspaceApp
+            token={token}
+            displayName={settings.appName}
+            mascot={settings.mascot}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
         </CopilotKitProvider>
       ) : (
         <SafeAreaView
@@ -107,11 +172,11 @@ export default function App() {
           }}
         >
           <View style={{ width: "100%", maxWidth: 420, gap: 22, alignItems: "center" }}>
-            <Mascot size={72} />
+            {settings.mascot && <Mascot size={72} />}
             <Text
               style={{ fontSize: 32, color: colors.text, letterSpacing: -1, fontWeight: "500" }}
             >
-              Welcome to OpenMuse.
+              Welcome to {settings.appName}.
             </Text>
             <Text style={[s.muted, { textAlign: "center" }]}>A little room for your day.</Text>
             {busy ? (
@@ -141,7 +206,17 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
-function WorkspaceApp({ token }: { token: string }) {
+function WorkspaceApp({
+  token,
+  displayName,
+  mascot,
+  onOpenSettings,
+}: {
+  token: string;
+  displayName: string;
+  mascot: boolean;
+  onOpenSettings: () => void;
+}) {
   const api = useMemo(() => new MuseApi(token), [token]);
   const [workspace, setWorkspace] = useState<Workspace>();
   const [section, setSection] = useState<Section>("chat");
@@ -220,6 +295,9 @@ function WorkspaceApp({ token }: { token: string }) {
               clearToast={() => setToast("")}
               error={error}
               prompt={prompt}
+              displayName={displayName}
+              mascot={mascot}
+              onOpenSettings={onOpenSettings}
             />
           </ThreadsProvider>
         </ComputerDraftProvider>
@@ -233,12 +311,18 @@ function WorkspaceShell({
   clearToast,
   error,
   prompt,
+  displayName,
+  mascot,
+  onOpenSettings,
 }: {
   detail?: Detail;
   toast: string;
   clearToast: () => void;
   error: string;
   prompt?: { id: number; text: string };
+  displayName: string;
+  mascot: boolean;
+  onOpenSettings: () => void;
 }) {
   const { workspace, section, navigate, open } = useWorkspace();
   const { data } = useAgentWorkspace();
@@ -261,7 +345,7 @@ function WorkspaceShell({
     data?.tasks.find(
       (task) => task.status === "waiting_approval" || task.status === "waiting_input",
     ) || data?.tasks.find((task) => task.status === "running");
-  const agentName = data?.identity.name || "OpenMuse";
+  const agentName = displayName !== "OpenMuse" ? displayName : data?.identity.name || "OpenMuse";
   const status = activeTask
     ? activeTask.status === "waiting_approval"
       ? `Ready to review · ${activeTask.title}`
@@ -319,7 +403,7 @@ function WorkspaceShell({
                   opacity: pressed ? 0.65 : 1,
                 })}
               >
-                <Mascot size={desktop ? 58 : 49} variant={data?.identity.avatar} />
+                {mascot && <Mascot size={desktop ? 58 : 49} variant={data?.identity.avatar} />}
                 <Text
                   style={{
                     fontSize: 16,
@@ -339,7 +423,8 @@ function WorkspaceShell({
               </Pressable>
               {section === "chat" && <ComputerEntry />}
             </View>
-            <View style={{ position: "absolute", right: 0, top: 16 }}>
+            <View style={{ position: "absolute", right: 0, top: 16, flexDirection: "row", gap: 4 }}>
+              <IconButton icon={SettingsIcon} label="Open app settings" onPress={onOpenSettings} />
               <IconButton
                 icon={Bell}
                 label={`Notifications, ${pending} unread or pending`}
