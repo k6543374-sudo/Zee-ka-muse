@@ -120,7 +120,10 @@ export default function App() {
       setThemeTick((tick) => tick + 1);
       setSettingsReady(true);
       const remembered = await loadAccessKey();
-      void connect(remembered || undefined);
+      // Only auto-connect with a remembered key; a keyless attempt against a
+      // live server just surfaces "Access key is incorrect" on a fresh visit.
+      if (remembered) void connect(remembered);
+      else setBusy(false);
     })();
   }, [connect]);
   if (!settingsReady)
