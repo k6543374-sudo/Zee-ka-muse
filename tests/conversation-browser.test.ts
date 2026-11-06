@@ -29,7 +29,7 @@ function runInput(): RunAgentInput {
 async function chatFixture(t: TestContext, failure?: string) {
   const browserCalls: string[] = [];
   const fixture = await browserFixture(t, (path, body) => {
-    browserCalls.push(path);
+    if (path !== "/health") browserCalls.push(path);
     if (failure) return { status: 502, data: { error: { message: failure } } };
     return {
       data: path.endsWith("/read")

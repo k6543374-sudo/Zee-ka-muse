@@ -165,7 +165,19 @@ export async function createApp(
       workspace.snapshot(c.get("owner"), c.req.query("q")),
       browser.reachable(),
     ]);
-    snapshot.browsers = snapshot.browsers.map((s) => browser.decorate(c.get("owner"), s));
+    // A worker that does not answer also makes every persisted session row stale:
+    // sessions live in the worker's memory and die with its instance, so a stored
+    // "active" row is unverified state, not a live browser (measured 2026-11-06: a
+    // row stayed "active" across two instance replacements). Report it honestly.
+    snapshot.browsers = snapshot.browsers.map((s) =>
+      !reachable && (s.status === "active" || s.status === "idle")
+        ? {
+            ...browser.decorate(c.get("owner"), s),
+            status: "error" as const,
+            lastError: "Browser worker is offline; this stored session is not live.",
+          }
+        : browser.decorate(c.get("owner"), s),
+    );
     // A configured worker that does not answer is offline, not ready.
     snapshot.connections = snapshot.connections.map((connection) =>
       connection.id === "browser" && connection.status === "connected" && !reachable

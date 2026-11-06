@@ -32,6 +32,17 @@ const trace = (...args: unknown[]) => {
   if (TRACE_ENABLED) console.log("[openmuse-trace]", new Date().toISOString(), ...args);
 };
 
+/**
+ * Explicit fresh-read intent: the user asks for the current/live state of a page.
+ * Kept narrow so ordinary chat never triggers a forced read.
+ */
+const FRESH_READ_INTENT =
+  /\b(current|currently|latest|live|right now|up[- ]?to[- ]?date|today(?:'s)?)\b/i;
+const EXPLICIT_URL = /https?:\/\/[^\s)"'<>]+/i;
+const freshReadTokens = (text: string) =>
+  new Set(text.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length >= 4));
+
+
 export class ConversationAgent extends AbstractAgent {
   constructor(
     private readonly config: Config,
@@ -47,7 +58,86 @@ export class ConversationAgent extends AbstractAgent {
   run(input: RunAgentInput): Observable<BaseEvent> {
     return this.runInternal(input, false);
   }
-  private runInternal(input: RunAgentInput, choiceContinuation: boolean): Observable<BaseEvent> {
+  /**
+   * Deterministic fresh-read guard (measured defect 2026-11-06: the model repeated a
+   * stale conversation answer for "current top story" without calling browse_web, and
+   * the pageRead:false prompt guard only engages when the tool is called and fails).
+   * For an explicit fresh-read question with a confident target (a URL in the message,
+   * or the thread's own prior browsed page when the message names it), read the page
+   * NOW server-side and put the outcome into the run context: fresh page text, or an
+   * explicit UNVERIFIED state. The model never gets a silent stale-answer path.
+   */
+  private async resolveFreshReadUrl(threadId: string, text: string): Promise<string | undefined> {
+    const explicit = text.match(EXPLICIT_URL)?.[0];
+    if (explicit) return explicit;
+    const association = await this.service.db.get<{ id: string; sessionId: string }>(
+      this.owner,
+      "chat-browsers",
+      threadId,
+    );
+    if (!association) return undefined;
+    const row = await this.service.db.get<{ url: string; title: string; status: string }>(
+      this.owner,
+      "browsers",
+      association.sessionId,
+    );
+    if (!row || row.status === "closed") return undefined;
+    let host = "";
+    try {
+      host = new URL(row.url).hostname;
+    } catch {
+      return undefined;
+    }
+    const targets = freshReadTokens(`${row.title} ${host}`);
+    const shared = [...freshReadTokens(text)].filter((token) => targets.has(token));
+    // One strong token (5+ chars, e.g. "hacker") or two weaker ones ("hacker"+"news"):
+    // a single generic 4-char hit like "news" is not a confident reference to the page.
+    return shared.some((token) => token.length >= 5) || shared.length >= 2 ? row.url : undefined;
+  }
+  async forceFreshRead(input: RunAgentInput, signal?: AbortSignal): Promise<RunAgentInput> {
+    const latest = input.messages.at(-1);
+    if (latest?.role !== "user" || typeof latest.content !== "string") return input;
+    if (!FRESH_READ_INTENT.test(latest.content)) return input;
+    const url = await this.resolveFreshReadUrl(input.threadId, latest.content);
+    if (!url) return input;
+    const at = new Date().toISOString();
+    trace("fresh read forced", input.runId, "url-origin", new URL(url).origin);
+    try {
+      const page = await this.service.browser.observeForThread(
+        this.owner,
+        input.threadId,
+        url,
+        signal,
+      );
+      return {
+        ...input,
+        context: [
+          ...input.context,
+          {
+            description: `Live read performed at ${at} for this request: ${page.url} ("${page.title}")`,
+            value: `This is the page's CURRENT content. Answer current-state questions from it, cite its URL, and prefer it over anything earlier in this conversation. If it does not cover the question, say what the fresh page does not show.\n\n${page.text.slice(0, 6000)}${page.truncated ? "\n[page text truncated]" : ""}`,
+          },
+        ],
+      };
+    } catch (error) {
+      signal?.throwIfAborted();
+      return {
+        ...input,
+        context: [
+          ...input.context,
+          {
+            description: `Live read of ${url} attempted at ${at} for this request FAILED`,
+            value: `The page's current state is UNVERIFIED: ${error instanceof Error ? error.message : String(error)}. Tell the user the live read failed with this error. Do not repeat or rely on earlier answers or memory about the page's current contents.`,
+          },
+        ],
+      };
+    }
+  }
+  private runInternal(
+    input: RunAgentInput,
+    choiceContinuation: boolean,
+    freshReadAttempted = false,
+  ): Observable<BaseEvent> {
     const latest = input.messages.filter((m) => m.role === "user").at(-1);
     const requestKey = `${input.threadId}:${latest?.id ?? input.runId}`;
     const jevMode = this.config.jevMode ?? "off";
@@ -82,6 +172,42 @@ export class ConversationAgent extends AbstractAgent {
         })();
         return () => {
           cancelled = true;
+          subscription?.unsubscribe();
+        };
+      });
+    if (
+      !choiceContinuation &&
+      !freshReadAttempted &&
+      this.config.workerUrl &&
+      this.config.workerToken &&
+      input.messages.at(-1)?.role === "user" &&
+      typeof input.messages.at(-1)?.content === "string" &&
+      FRESH_READ_INTENT.test(input.messages.at(-1)?.content as string)
+    )
+      return new Observable((subscriber) => {
+        let subscription: { unsubscribe(): void } | undefined;
+        let cancelled = false;
+        const freshAbort = new AbortController();
+        void (async () => {
+          let prepared: RunAgentInput;
+          try {
+            prepared = await this.forceFreshRead(input, freshAbort.signal);
+          } catch (error) {
+            if (cancelled) return;
+            subscriber.next({
+              type: EventType.RUN_ERROR,
+              message:
+                error instanceof Error ? error.message : "Could not read the page for this request",
+            });
+            subscriber.complete();
+            return;
+          }
+          if (cancelled) return;
+          subscription = this.runInternal(prepared, choiceContinuation, true).subscribe(subscriber);
+        })();
+        return () => {
+          cancelled = true;
+          freshAbort.abort();
           subscription?.unsubscribe();
         };
       });

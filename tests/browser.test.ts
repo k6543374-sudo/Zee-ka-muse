@@ -29,7 +29,7 @@ const savedSession: BrowserSession = {
 test("browser API reopens an owned profile at the edited address and renews console access", async (t) => {
   const calls: { path: string; body: Record<string, unknown> }[] = [];
   const { db, config } = await browserFixture(t, (path, body) => {
-    calls.push({ path, body });
+    if (path !== "/health") calls.push({ path, body });
     return { data: { ...savedSession, url: body.url } };
   });
   const { app, auth, agent } = await createApp(db, config);
@@ -83,7 +83,7 @@ test("browser API reopens an owned profile at the edited address and renews cons
 test("server reopens the same worker UUID regardless of stale local session status", async (t) => {
   const calls: { path: string; body: Record<string, unknown> }[] = [];
   const { db, service } = await browserFixture(t, (path, body) => {
-    calls.push({ path, body });
+    if (path !== "/health") calls.push({ path, body });
     return { data: { ...savedSession, url: body.url } };
   });
   for (const status of ["active", "closed", "idle", "error"] as const) {
@@ -141,7 +141,7 @@ test("browser observations reuse an owned profile and reject unowned reads", asy
     truncated: false,
   };
   const { db, service } = await browserFixture(t, (path, body) => {
-    calls.push(path);
+    if (path !== "/health") calls.push(path);
     return {
       data: path.endsWith("/read") ? read : { ...savedSession, id: body.id, url: body.url },
     };
@@ -162,7 +162,7 @@ test("cancelled task-style browser observations stop before a follow-up read", a
   const controller = new AbortController();
   const calls: string[] = [];
   const { db, service } = await browserFixture(t, (path, body) => {
-    calls.push(path);
+    if (path !== "/health") calls.push(path);
     controller.abort();
     return { data: { ...savedSession, id: body.id, url: body.url } };
   });
@@ -178,7 +178,7 @@ test("chat browser reads reuse a persisted owned profile across turns and servic
   const calls: { path: string; body: Record<string, unknown> }[] = [];
   let currentUrl = savedSession.url;
   const { db, service, config } = await browserFixture(t, (path, body) => {
-    calls.push({ path, body });
+    if (path !== "/health") calls.push({ path, body });
     if (path.endsWith("/read"))
       return {
         data: { url: currentUrl, title: "Read page", text: "x".repeat(30_001), truncated: false },
@@ -262,7 +262,7 @@ test("cancelled chat browser requests do not start navigation or a follow-up rea
   const controller = new AbortController();
   const calls: string[] = [];
   const { db, service } = await browserFixture(t, (path, body) => {
-    calls.push(path);
+    if (path !== "/health") calls.push(path);
     controller.abort();
     return { data: { ...savedSession, id: body.id } };
   });
