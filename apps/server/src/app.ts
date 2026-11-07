@@ -160,6 +160,40 @@ export async function createApp(
     await auth.revoke(c.req.header("authorization"));
     return c.json({ ok: true });
   });
+  // TEMPORARY DIAGNOSTIC (remove after the upstream-405 investigation): replays the
+  // exact anonymous Gemini generation call the configured proxy makes, from this
+  // runtime's egress. Authenticated like every /api route; fixed trivial prompt;
+  // returns only status, a short snippet, and timing. No secrets, no user data.
+  app.get("/api/diag/upstream-probe", async (c) => {
+    const started = Date.now();
+    try {
+      const mod: any = await import("./diag/gemini-probe-worker.ts");
+      const res = await mod.default.fetch(
+        new Request("http://localhost/v1/chat/completions", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            model: "gemini-3.6-flash",
+            messages: [{ role: "user", content: "Reply with exactly: OK" }],
+            stream: false,
+          }),
+        }),
+        { GEMINI_BL: "boq_gemini-web-uiserver_20261106.06_p0", API_KEYS: "[]" },
+        { waitUntil: () => {} },
+      );
+      const text = await res.text();
+      return c.json({
+        workerStatus: res.status,
+        snippet: text.slice(0, 200),
+        ms: Date.now() - started,
+      });
+    } catch (e: any) {
+      return c.json(
+        { threw: String(e?.message ?? e).slice(0, 200), ms: Date.now() - started },
+        500,
+      );
+    }
+  });
   app.get("/api/workspace", async (c) => {
     const [snapshot, reachable] = await Promise.all([
       workspace.snapshot(c.get("owner"), c.req.query("q")),
