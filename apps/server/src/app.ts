@@ -166,6 +166,17 @@ export async function createApp(
   // returns only status, a short snippet, and timing. No secrets, no user data.
   app.get("/api/diag/upstream-probe", async (c) => {
     const started = Date.now();
+    let googleReach: string;
+    try {
+      const r = await fetch("https://gemini.google.com/", {
+        signal: AbortSignal.timeout(15000),
+      });
+      googleReach = "HTTP " + r.status;
+    } catch (e: any) {
+      googleReach =
+        "fetch failed: " +
+        String(e?.cause?.code ?? e?.cause ?? e?.message ?? e).slice(0, 80);
+    }
     try {
       const mod: any = await import("./diag/gemini-probe-worker.ts");
       const res = await mod.default.fetch(
@@ -185,11 +196,16 @@ export async function createApp(
       return c.json({
         workerStatus: res.status,
         snippet: text.slice(0, 200),
+        googleReach,
         ms: Date.now() - started,
       });
     } catch (e: any) {
       return c.json(
-        { threw: String(e?.message ?? e).slice(0, 200), ms: Date.now() - started },
+        {
+          threw: String(e?.message ?? e).slice(0, 200),
+          googleReach,
+          ms: Date.now() - started,
+        },
         500,
       );
     }
