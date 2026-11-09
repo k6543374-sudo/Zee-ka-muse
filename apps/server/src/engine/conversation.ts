@@ -12,6 +12,7 @@ import {
 } from "../../../../packages/domain/src/agent.ts";
 import { calendarRangeSchema } from "../../../../packages/domain/src/index.ts";
 import { jevActionPrefix, parseJevAction } from "../../../../packages/domain/src/jev.ts";
+import { createTextPdf } from "../pdf-create.ts";
 import { computerInstructions, computerTools } from "../computer-tools.ts";
 import type { Config } from "../config.ts";
 import { createJevAdapter, type JevAdapter } from "../jev/adapter.ts";
@@ -521,6 +522,28 @@ export class ConversationAgent extends AbstractAgent {
             }),
           ]
         : []),
+      defineTool({
+        name: "create_pdf",
+        description:
+          "Create a PDF document from text and save it to the user's Files (Apps > Files). Use when the user asks to make, write, export or save a PDF. content supports '# Heading', '## Subheading', '- bullet' lines and plain paragraphs; blank lines separate paragraphs. Latin-script text only; unsupported scripts return an error, never silently transliterate. Returns the saved file name and page count; tell the user it is in Files.",
+        parameters: z.object({
+          title: z.string().min(1).max(200),
+          content: z.string().min(1).max(60000),
+        }),
+        execute: async (args) => {
+          const bytes = await createTextPdf(args.title, args.content);
+          const name = `${args.title.replace(/[^\w .-]+/g, "").trim().slice(0, 80) || "document"}.pdf`;
+          const file = await this.service.files.import(
+            this.owner,
+            name,
+            bytes,
+            "Created by OpenMuse",
+            undefined,
+            key("create_pdf", args),
+          );
+          return { id: file.id, name: file.name, pages: file.pageCount, size: file.size, location: "Apps > Files" };
+        },
+      }),
       defineTool({
         name: "delegate_task",
         description:
