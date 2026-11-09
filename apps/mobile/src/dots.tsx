@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useRef, useState } from "react";
-import { Text, TextInput, View } from "react-native";
+import { Platform, Text, TextInput, View } from "react-native";
 import type { DotPage, DotPageSummary, DotSpace } from "../../../packages/domain/src/dots";
 import { Button, Card, ErrorNotice, Field, s } from "./ui";
 import { useWorkspace } from "./workspace";
@@ -51,7 +51,7 @@ export function DotsScreen() {
   // The app's navigation may unmount this screen. Warn on browser close/reload,
   // and keep the in-screen navigation locked until the owner saves or discards.
   useEffect(() => {
-    if (!dirty || typeof window === "undefined") return;
+    if (!dirty || Platform.OS !== "web" || typeof window === "undefined") return;
     const warn = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = "";
