@@ -262,3 +262,7 @@ MIT licensed. Built by CopilotKit. Its original interface and fictional assets a
 - Deploy blueprint: `render.free.yaml` (free plan: API + public docker browser worker + static web). Supabase provides persistence (`DATABASE_URL` + storage bucket); Render free has no disks.
 - `apps/worker/src/index.ts` patched to bind `$PORT` so the worker can run as a free Render web service.
 - Packaging caveat: upstream `.github/workflows/ci.yml` is intentionally omitted from this repo - pushing workflow files requires a broader token scope than the upload credential has. CI is not needed for deployment; restore it later if wanted.
+
+## OpenDots workspace first slice
+
+Apps now includes **OpenDots · Spaces & pages**: private Spaces and manual editable text/Markdown pages using the existing owner-scoped Muse store. This is a bounded feature port, not the full OpenDots app. Dots, calls, Slack, rich editing and separate computers are not enabled. No new service, environment variable or model is required. [Scope, draft recovery and limits](docs/OPENDOTS-WORKSPACE.md).

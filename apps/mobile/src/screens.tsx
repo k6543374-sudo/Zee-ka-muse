@@ -1183,7 +1183,7 @@ export function ActivityScreen() {
   );
 }
 export function ConnectionsScreen({ query = "" }: { query?: string }) {
-  const { workspace: w, api, refresh, notify, open } = useWorkspace();
+  const { workspace: w, api, refresh, notify, open, navigate } = useWorkspace();
   const [selected, setSelected] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -1240,6 +1240,14 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
       color: "#1987CF",
       connected: w.connections.some((c) => c.id === "browser" && c.status === "connected"),
       group: "browser",
+    },
+    {
+      id: "opendots",
+      name: "OpenDots · Spaces & pages",
+      icon: FileText,
+      color: "#6866A6",
+      connected: true,
+      group: "opendots",
     },
     {
       id: "openbot",
@@ -1320,11 +1328,44 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
       {!rows.length && <Text style={s.muted}>No matching connectors.</Text>}
       {selected && (
         <Sheet
-          title={selected === "google" ? "Google connections" : "OpenBot"}
-          subtitle={selected === "google" ? google?.account : "A computer for your agent"}
+          title={
+            selected === "google"
+              ? "Google connections"
+              : selected === "opendots"
+                ? "OpenDots workspace"
+                : "OpenBot"
+          }
+          subtitle={
+            selected === "google"
+              ? google?.account
+              : selected === "opendots"
+                ? "Spaces and manual pages only"
+                : "A computer for your agent"
+          }
           onClose={() => setSelected(undefined)}
         >
-          {selected === "google" ? (
+          {selected === "opendots" ? (
+            <View style={{ gap: 18 }}>
+              <Text style={s.text}>
+                Spaces and editable text pages are available inside Muse. No extra service or
+                sign-in is needed.
+              </Text>
+              <Text style={s.muted}>
+                This is a first OpenDots-inspired feature port, not the full OpenDots app.
+                Specialist Dots, rich visual editing, calls, Slack, MCP and per-Dot computers are
+                not enabled. Your existing Gemini connection and email approvals are unchanged.
+              </Text>
+              <Button
+                primary
+                onPress={() => {
+                  setSelected(undefined);
+                  navigate("dots");
+                }}
+              >
+                Open Spaces & pages
+              </Button>
+            </View>
+          ) : selected === "google" ? (
             <View style={{ gap: 18 }}>
               <Text style={s.muted}>
                 Bring Gmail and Google Calendar into your conversations. Choose read access, then

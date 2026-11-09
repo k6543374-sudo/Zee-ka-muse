@@ -12,7 +12,8 @@ export type Section =
   | "connections"
   | "ideas"
   | "goals"
-  | "apps";
+  | "apps"
+  | "dots";
 export interface Mail {
   id: string;
   threadId: string;

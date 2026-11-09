@@ -34,8 +34,15 @@ import {
 } from "./src/agent-ui";
 import { AgentWorkspaceProvider, useAgentWorkspace } from "./src/agent-workspace";
 import { API_URL, createSession, MuseApi } from "./src/api";
+import { ChatScreen, WorkspaceTools } from "./src/chat";
+import { ComputerEntry } from "./src/computer";
+import { ComputerDraftProvider } from "./src/computer-drafts";
+import { Details } from "./src/details";
+import { DotsScreen } from "./src/dots";
 import { SettingsSheet } from "./src/SettingsSheet";
+import { BrowserScreen, CalendarScreen, FilesScreen, MailScreen } from "./src/screens";
 import {
+  type AppSettings,
   applySettings,
   clearAccessKey,
   defaultSettings,
@@ -43,16 +50,10 @@ import {
   loadSettings,
   saveAccessKey,
   saveSettings,
-  type AppSettings,
 } from "./src/settings";
-import { ChatScreen, WorkspaceTools } from "./src/chat";
-import { ComputerEntry } from "./src/computer";
-import { wakeWorkerOnce } from "./src/worker-wake";
-import { ComputerDraftProvider } from "./src/computer-drafts";
-import { Details } from "./src/details";
-import { BrowserScreen, CalendarScreen, FilesScreen, MailScreen } from "./src/screens";
 import { ThreadsProvider, ThreadsSheet, useMuseThread } from "./src/threads";
 import { Button, Card, colors, ErrorNotice, Field, IconButton, Mascot, s } from "./src/ui";
+import { wakeWorkerOnce } from "./src/worker-wake";
 import { type Detail, useWorkspace, WorkspaceContext } from "./src/workspace";
 
 const nav: { id: Section; label: string; icon: LucideIcon }[] = [
@@ -77,6 +78,7 @@ const titles: Partial<Record<Section, { title: string; subtitle: string }>> = {
   mail: { title: "Mail", subtitle: "The conversations behind your work." },
   calendar: { title: "Calendar", subtitle: "Time for what matters." },
   browser: { title: "Browser", subtitle: "Your connected browsing sessions." },
+  dots: { title: "Spaces & pages", subtitle: "Your private document workspace." },
   files: { title: "Files", subtitle: "Documents, forms and filled copies." },
 };
 export default function App() {
@@ -363,22 +365,24 @@ function WorkspaceShell({
       : "Here when you need me";
   const title = titles[section] || titles.apps;
   const Screen =
-    section === "mail"
-      ? MailScreen
-      : section === "calendar"
-        ? CalendarScreen
-        : section === "browser"
-          ? BrowserScreen
-          : section === "files"
-            ? FilesScreen
-            : section === "activity"
-              ? AgentActivityScreen
-              : section === "ideas"
-                ? IdeasScreen
-                : section === "goals"
-                  ? GoalsScreen
-                  : AppsScreen;
-  const utility = ["mail", "calendar", "browser", "files"].includes(section);
+    section === "dots"
+      ? DotsScreen
+      : section === "mail"
+        ? MailScreen
+        : section === "calendar"
+          ? CalendarScreen
+          : section === "browser"
+            ? BrowserScreen
+            : section === "files"
+              ? FilesScreen
+              : section === "activity"
+                ? AgentActivityScreen
+                : section === "ideas"
+                  ? IdeasScreen
+                  : section === "goals"
+                    ? GoalsScreen
+                    : AppsScreen;
+  const utility = ["mail", "calendar", "browser", "files", "dots"].includes(section);
   return (
     <>
       <WorkspaceTools />

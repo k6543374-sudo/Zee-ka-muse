@@ -19,6 +19,7 @@ import { ComputerService, type DockerRunner, resolveComputerDeployment } from ".
 import { computerRoutes } from "./computer-routes.ts";
 import { assertApiDeploymentConfig, type Config } from "./config.ts";
 import type { Store } from "./db.ts";
+import { dotsRoutes } from "./dots-routes.ts";
 import { agentRoutes } from "./engine/routes.ts";
 import { AgentService } from "./engine/service.ts";
 import { AppError } from "./errors.ts";
@@ -186,6 +187,7 @@ export async function createApp(
     );
     return c.json(snapshot);
   });
+  app.route("/api/dots", dotsRoutes(db));
   app.route("/api/agent", agentRoutes(agent));
   app.route("/api/computer", computerRoutes(computer, files));
   app.get("/api/calendars", async (c) => c.json(await workspace.calendars(c.get("owner"))));
