@@ -121,3 +121,71 @@ test("a model task keeps every earlier answer when it asks again", async (t) => 
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+for (const status of ["none", "failed", "awaiting_review", "succeeded"] as const) {
+  test(`email finish_task requires its own Gmail receipt (${status})`, async (t) => {
+    await modelFixture(t, () => ({
+      name: "finish_task",
+      arguments: { summary: "Email sent to friend@example.com." },
+    }));
+    const directory = await mkdtemp(join(tmpdir(), "openmuse-send-receipt-"));
+    const db = await createStore();
+    const server = await createApp(db, {
+      mode: "sample",
+      port: 8787,
+      host: "127.0.0.1",
+      publicUrl: "http://localhost:8787",
+      dataDir: directory,
+      agentBackend: "model",
+      model: "openai/fixture",
+      intelligenceApiKey: "test-project-key-never-sent",
+      googleRedirectUri: "http://localhost:8787/api/google/callback",
+      allowedOrigins: [],
+    });
+    try {
+      const task = await server.agent.createTask("owner", {
+        prompt: "Send an email to friend@example.com introducing the app",
+        kind: "agent",
+      });
+      // No network mail API is used. Seed only local fixture receipts.
+      if (status !== "none")
+        await db.put("owner", "actions", {
+          id: "test-receipt",
+          taskId: task.id,
+          kind: "email.send",
+          status,
+          result: status === "succeeded" ? "Gmail sent message · fixture123" : undefined,
+          data: {
+            to: ["friend@example.com"],
+            cc: [],
+            bcc: [],
+            subject: "Test",
+            body: "Fixture only",
+            attachmentIds: [],
+          },
+          title: "Fixture email",
+          hash: "h",
+          expiresAt: "2099-01-01T00:00:00Z",
+          createdAt: "2026-11-09T00:00:00Z",
+        });
+      await server.agent.worker.tick();
+      const saved = await server.agent.getTask("owner", task.id);
+      assert.equal(
+        saved.status,
+        status === "succeeded" ? "succeeded" : "waiting_input",
+        saved.error ?? saved.question,
+      );
+      if (status === "succeeded") {
+        assert.match(saved.result ?? "", /fixture123/);
+        assert.match(saved.result ?? "", /not delivery/);
+      } else {
+        assert.match(saved.question ?? "", /No successful Gmail send receipt/);
+        assert.equal(saved.result, undefined);
+      }
+    } finally {
+      await server.agent.stop();
+      await db.close();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}

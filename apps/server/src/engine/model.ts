@@ -3,6 +3,13 @@ import { createHash, randomUUID } from "node:crypto";
 import { EventType, type RunAgentInput } from "@ag-ui/core";
 import { defineTool } from "@copilotkit/runtime/v2";
 import { z } from "zod";
+import type { ActionProposal } from "../../../../packages/domain/src/index.ts";
+import {
+  emailSendClaim,
+  emailSendTask,
+  gmailReceipts,
+  emailReceiptText,
+} from "./email-receipts.ts";
 import type { AgentTask } from "../../../../packages/domain/src/agent.ts";
 import { emailDraftSchema, eventDraftSchema } from "../../../../packages/domain/src/index.ts";
 import { computerInstructions, computerTools } from "../computer-tools.ts";
@@ -306,6 +313,25 @@ export async function executeModelTask(
       "Finish only when the requested outcome is actually achieved",
       z.object({ summary: z.string().min(1).max(8000) }),
       async ({ summary }) => {
+        if (emailSendTask(`${task.title} ${task.prompt}`) || emailSendClaim(summary)) {
+          const receipts = gmailReceipts(
+            await service.db.list<ActionProposal>(owner, "actions"),
+            task.id,
+          );
+          if (!receipts.length) {
+            outcome = {
+              status: "waiting_input",
+              question:
+                "No successful Gmail send receipt exists for this task. No email send is confirmed. Prepare the email for review, or check the failed/pending action in Activity before continuing.",
+            };
+            return {
+              complete: false,
+              status: "waiting_input",
+              error: "A task summary cannot substitute for a Gmail send receipt.",
+            };
+          }
+          summary = emailReceiptText(receipts);
+        }
         const artifact = await service.artifact(
           owner,
           task,
