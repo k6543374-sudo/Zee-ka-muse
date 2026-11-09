@@ -35,9 +35,11 @@ export function ComputerEntry() {
         {
           alignSelf: "center",
           gap: 6,
-          paddingHorizontal: 12,
-          paddingVertical: 7,
-          borderRadius: 20,
+          paddingHorizontal: 14,
+          paddingVertical: 0,
+          minHeight: 44,
+          alignItems: "center",
+          borderRadius: 22,
           backgroundColor: "#F1F3F4",
         },
       ]}

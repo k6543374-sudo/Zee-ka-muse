@@ -143,7 +143,8 @@ export function Button({
       style={({ pressed }) => [
         s.button,
         primary ? { backgroundColor: colors.blue } : s.secondary,
-        small && { minHeight: 38, paddingVertical: 7, paddingHorizontal: 13 },
+        // 44px minimum keeps every tappable control comfortably touchable on phones.
+        small && { minHeight: 44, paddingVertical: 9, paddingHorizontal: 14 },
         (disabled || busy) && { opacity: 0.5 },
         pressed && { transform: [{ scale: 0.98 }] },
         style,

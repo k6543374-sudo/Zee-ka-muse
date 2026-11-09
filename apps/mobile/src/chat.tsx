@@ -484,6 +484,11 @@ export function ChatScreen({
       ? messages[latestUserIndex].content
       : null;
   const visible = messages.filter((m) => m.role === "user" || m.role === "assistant");
+  // Mount only the newest messages: rendering a whole long thread at once makes
+  // scrolling janky on low-end phones. Older messages load on demand.
+  const [shownCount, setShownCount] = useState(60);
+  const hiddenCount = Math.max(0, visible.length - shownCount);
+  const shown = hiddenCount > 0 ? visible.slice(hiddenCount) : visible;
   const latestDesktop = messages
     .flatMap((m) => ("toolCalls" in m ? m.toolCalls || [] : []))
     .filter((call) => call.function.name === "use_desktop")
@@ -514,6 +519,15 @@ export function ChatScreen({
               Retry loading conversation
             </Button>
           </>
+        )}
+        {hiddenCount > 0 && (
+          <Button
+            small
+            style={{ alignSelf: "center" }}
+            onPress={() => setShownCount((count) => count + 100)}
+          >
+            Show {Math.min(hiddenCount, 100)} earlier of {hiddenCount} older messages
+          </Button>
         )}
         {!visible.length ? (
           <View
@@ -560,7 +574,7 @@ export function ChatScreen({
             </View>
           </View>
         ) : (
-          visible.map((message) => {
+          shown.map((message) => {
             const user = message.role === "user";
             const text =
               typeof message.content === "string"
