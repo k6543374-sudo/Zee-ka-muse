@@ -188,6 +188,8 @@ export interface Connection {
   wakeUrl?: string;
 }
 export interface Workspace {
+  /** A failed source is omitted, never presented as an up-to-date empty inbox/calendar. */
+  sourceErrors?: { mail?: string; calendar?: string };
   mode: WorkspaceMode;
   profile: { name: string; email: string };
   mail: Mail[];

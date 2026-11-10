@@ -144,7 +144,81 @@ export function WorkspaceTools() {
       <ServerToolCard name="Memory" result={result} loading={status !== "complete"} />
     ),
   });
+  useRenderTool({
+    name: "ask_planner",
+    description: "Display planner advice, timeout or error",
+    parameters: displayParameters,
+    render: ({ result, status }) => (
+      <HelperToolCard name="Planner" result={result} loading={status !== "complete"} />
+    ),
+  });
+  useRenderTool({
+    name: "ask_researcher",
+    description: "Display researcher advice, timeout or error",
+    parameters: displayParameters,
+    render: ({ result, status }) => (
+      <HelperToolCard name="Researcher" result={result} loading={status !== "complete"} />
+    ),
+  });
+  useRenderTool({
+    name: "ask_reviewer",
+    description: "Display reviewer advice, timeout or error",
+    parameters: displayParameters,
+    render: ({ result, status }) => (
+      <HelperToolCard name="Reviewer" result={result} loading={status !== "complete"} />
+    ),
+  });
+  useRenderTool({
+    name: "ask_writer",
+    description: "Display writer advice, timeout or error",
+    parameters: displayParameters,
+    render: ({ result, status }) => (
+      <HelperToolCard name="Writer" result={result} loading={status !== "complete"} />
+    ),
+  });
   return null;
+}
+function HelperToolCard({
+  name,
+  result,
+  loading,
+}: {
+  name: string;
+  result: unknown;
+  loading: boolean;
+}) {
+  let value = result;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      value = undefined;
+    }
+  }
+  const parsed = z
+    .object({ advice: z.string().optional(), error: z.string().optional() })
+    .safeParse(value);
+  const advice = parsed.success ? parsed.data.advice : undefined;
+  const error = parsed.success ? parsed.data.error : undefined;
+  return (
+    <Card style={{ padding: 16, gap: 10 }}>
+      <Text style={s.heading}>
+        {name} helper{loading && !advice && !error ? " · working" : ""}
+      </Text>
+      {error ? (
+        <ErrorNotice error={error} />
+      ) : advice ? (
+        <AssistantResponse content={advice} />
+      ) : (
+        <Text style={s.muted}>
+          {loading
+            ? "Waiting for advice. A stalled helper stops after 45 seconds."
+            : "No helper advice was returned."}
+        </Text>
+      )}
+      <Text style={s.small}>Advice only. No action was taken.</Text>
+    </Card>
+  );
 }
 function ServerToolCard({
   name,

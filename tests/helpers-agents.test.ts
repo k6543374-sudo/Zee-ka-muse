@@ -103,3 +103,35 @@ test("modelRunner times out instead of hanging on a stalled gateway", async (t) 
   setTimeout(() => controller.abort(), 100);
   await assert.rejects(modelRunner("openai/stalled")("sys", "hi", controller.signal), /cancelled/);
 });
+
+// A transport that ignores abort must not keep the tool running forever.
+test("helper deadline settles even when the provider ignores cancellation", async (t) => {
+  const { boundedHelperCall } = await import("../apps/server/src/engine/helpers.ts");
+  const previous = process.env.HELPER_TIMEOUT_MS;
+  process.env.HELPER_TIMEOUT_MS = "30";
+  t.after(() => {
+    if (previous === undefined) delete process.env.HELPER_TIMEOUT_MS;
+    else process.env.HELPER_TIMEOUT_MS = previous;
+  });
+  let transport: AbortController | undefined;
+  await assert.rejects(
+    boundedHelperCall(async (controller) => {
+      transport = controller;
+      return new Promise<string>(() => {});
+    }),
+    /timed out/,
+  );
+  assert.equal(transport?.signal.aborted, true);
+  const parent = new AbortController();
+  const cancelled = boundedHelperCall(async () => new Promise<string>(() => {}), parent.signal);
+  parent.abort();
+  await assert.rejects(cancelled, /cancelled/);
+  let called = false;
+  await assert.rejects(
+    boundedHelperCall(async () => {
+      called = true;
+    }, parent.signal),
+    /cancelled/,
+  );
+  assert.equal(called, false);
+});

@@ -289,22 +289,45 @@ export class WorkspaceService {
     wantMail: boolean,
     wantEvents: boolean,
     query?: string,
-  ): Promise<{ mail: Mail[]; events: CalendarEvent[]; connected: boolean }> {
+    resilient = false,
+  ): Promise<{
+    mail: Mail[];
+    events: CalendarEvent[];
+    connected: boolean;
+    sourceErrors?: Workspace["sourceErrors"];
+  }> {
     let mail: Mail[] = [];
     let events: CalendarEvent[] = [];
     const connected = await this.connected(owner);
+    const sourceErrors: NonNullable<Workspace["sourceErrors"]> = {};
     if (this.config.mode === "live" && connected) {
       const connection = await this.connection(owner);
       if (!connection) throw new AppError("Google is disconnected", 409);
       const google = this.google(owner, connection.id);
-      const [mailResult, eventResult] = await Promise.all([
-        wantMail ? google.listMail(query) : Promise.resolve([] as Mail[]),
-        wantEvents ? google.listEvents() : Promise.resolve([] as CalendarEvent[]),
-      ]);
-      mail = mailResult;
-      events = eventResult;
-      if (wantMail) mail = await this.cacheMail(owner, mail, connection.id);
-      for (const event of events) await this.db.put(owner, "events", event);
+      const readMail = async () =>
+        wantMail
+          ? this.cacheMail(owner, await google.listMail(query), connection.id)
+          : ([] as Mail[]);
+      const readEvents = async () => {
+        if (!wantEvents) return [] as CalendarEvent[];
+        const result = await google.listEvents();
+        for (const event of result) await this.db.put(owner, "events", event);
+        return result;
+      };
+      if (resilient) {
+        // Workspace chrome, files and browser must survive a Gmail/Calendar outage.
+        // Direct agent reads below remain strict, so no failed read looks like "no mail".
+        const [mailResult, eventResult] = await Promise.allSettled([readMail(), readEvents()]);
+        if (mailResult.status === "fulfilled") mail = mailResult.value;
+        else
+          sourceErrors.mail = "Gmail is unavailable. Mail is not shown until a refresh succeeds.";
+        if (eventResult.status === "fulfilled") events = eventResult.value;
+        else
+          sourceErrors.calendar =
+            "Google Calendar is unavailable. Events are not shown until a refresh succeeds.";
+      } else {
+        [mail, events] = await Promise.all([readMail(), readEvents()]);
+      }
     } else if (this.config.mode === "sample" && connected) {
       if (wantMail) {
         mail = await this.db.list<Mail>(owner, "mail");
@@ -315,14 +338,26 @@ export class WorkspaceService {
       }
       if (wantEvents) events = await this.db.list<CalendarEvent>(owner, "events");
     }
-    return { mail, events, connected };
+    return {
+      mail,
+      events,
+      connected,
+      ...(Object.keys(sourceErrors).length ? { sourceErrors } : {}),
+    };
   }
 
   async snapshot(owner: string, query?: string): Promise<Workspace> {
-    const { mail, events, connected } = await this.sourceSections(owner, true, true, query);
+    const { mail, events, connected, sourceErrors } = await this.sourceSections(
+      owner,
+      true,
+      true,
+      query,
+      true,
+    );
     const tokens = this.config.mode === "live" ? await this.googleAuth.tokens(owner) : null;
     return {
       mode: this.config.mode,
+      ...(sourceErrors ? { sourceErrors } : {}),
       profile: {
         name: this.config.mode === "sample" ? "Alex" : "You",
         email: tokens?.account ?? (this.config.mode === "sample" ? "alex@example.com" : ""),

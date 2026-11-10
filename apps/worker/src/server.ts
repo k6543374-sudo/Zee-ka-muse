@@ -45,10 +45,11 @@ export async function createWorkerServer(
   const browser = await createBrowser(options);
   const server = createServer(async (request, response) => {
     const reqStart = Date.now();
-    const reqPath = `${request.method} ${new URL(request.url ?? "/", "http://worker").pathname}`.replace(
-      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
-      ":id",
-    );
+    const reqPath =
+      `${request.method} ${new URL(request.url ?? "/", "http://worker").pathname}`.replace(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+        ":id",
+      );
     if (process.env.OPENMUSE_TRACE === "1")
       console.log("[openmuse-trace]", new Date().toISOString(), "worker request", reqPath);
     response.setHeader("cache-control", "no-store");
@@ -57,11 +58,19 @@ export async function createWorkerServer(
       response.writeHead(status, { "content-type": "application/json; charset=utf-8" });
       response.end(JSON.stringify(body));
       if (process.env.OPENMUSE_TRACE === "1")
-        console.log("[openmuse-trace]", new Date().toISOString(), "worker response", reqPath, status, Date.now() - reqStart, "ms");
+        console.log(
+          "[openmuse-trace]",
+          new Date().toISOString(),
+          "worker response",
+          reqPath,
+          status,
+          Date.now() - reqStart,
+          "ms",
+        );
     };
     try {
       const pathname = new URL(request.url ?? "/", "http://worker").pathname;
-      if (request.method === "GET" && pathname === "/health") {
+      if ((request.method === "GET" || request.method === "HEAD") && pathname === "/health") {
         json(200, { status: "ok" });
         return;
       }

@@ -102,12 +102,10 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [settingsReady, setSettingsReady] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [themeTick, setThemeTick] = useState(0);
   const savePrefs = useCallback((next: AppSettings) => {
     setSettings(next);
     applySettings(next);
     void saveSettings(next);
-    setThemeTick((tick) => tick + 1);
   }, []);
   const signOut = useCallback(() => {
     void clearAccessKey();
@@ -120,7 +118,6 @@ export default function App() {
       const stored = await loadSettings();
       applySettings(stored);
       setSettings(stored);
-      setThemeTick((tick) => tick + 1);
       setSettingsReady(true);
       const remembered = await loadAccessKey();
       // Only auto-connect with a remembered key; a keyless attempt against a
@@ -146,7 +143,7 @@ export default function App() {
       </SafeAreaProvider>
     );
   return (
-    <SafeAreaProvider key={themeTick}>
+    <SafeAreaProvider>
       <StatusBar style="dark" />
       <SettingsSheet
         visible={settingsOpen}
@@ -457,6 +454,11 @@ function WorkspaceShell({
             </View>
           </View>
           <View style={{ flex: 1, minHeight: 0 }}>
+            {!!workspace.sourceErrors && (
+              <View style={{ paddingHorizontal: desktop ? 42 : 17, paddingVertical: 8 }}>
+                <ErrorNotice error={Object.values(workspace.sourceErrors).join(" ")} />
+              </View>
+            )}
             {section !== "chat" && (
               <ScrollView
                 key={section}

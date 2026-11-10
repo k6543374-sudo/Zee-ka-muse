@@ -46,41 +46,64 @@ const MAX_INPUT = 6000;
 const MAX_OUTPUT = 4000;
 const helperTimeoutMs = () => Number(process.env.HELPER_TIMEOUT_MS) || 45_000;
 
+/** Enforce a wall-clock deadline even if a provider ignores AbortSignal. */
+export async function boundedHelperCall<T>(
+  work: (controller: AbortController) => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (signal?.aborted) throw new Error("Helper call was cancelled");
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  const stopped = new Promise<never>((_resolve, reject) => {
+    const stop = (message: string) => {
+      // Reject first: aborting a cooperative SDK may synchronously throw its own error.
+      reject(new Error(message));
+      controller.abort();
+    };
+    onAbort = () => stop("Helper call was cancelled");
+    signal?.addEventListener("abort", onAbort, { once: true });
+    timer = setTimeout(() => stop("Helper model timed out"), helperTimeoutMs());
+  });
+  try {
+    // Promise.race also observes late provider rejection after timeout/cancellation.
+    return await Promise.race([
+      Promise.resolve().then(() => {
+        controller.signal.throwIfAborted();
+        return work(controller);
+      }),
+      stopped,
+    ]);
+  } finally {
+    clearTimeout(timer);
+    if (onAbort) signal?.removeEventListener("abort", onAbort);
+  }
+}
+
 /** Default runner: the configured OpenMuse model, streamed and collected, no tools. */
 export function modelRunner(model: string): HelperRunner {
-  return async (system, user, signal) => {
-    const abortController = new AbortController();
-    signal?.addEventListener("abort", () => abortController.abort(), { once: true });
-    // A gateway can accept the request and never answer; stop instead of hanging the tool.
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      abortController.abort();
-    }, helperTimeoutMs());
-    let text = "";
-    const stream = chat({
-      adapter: adapter(model),
-      messages: [{ role: "user", content: user }],
-      systemPrompts: [system],
-      abortController,
-    });
-    try {
-      for await (const chunk of stream as AsyncIterable<{ type: string; delta?: string }>) {
-        if (chunk.type === "RUN_ERROR") throw new Error("Helper model call failed");
-        if (chunk.type === "TEXT_MESSAGE_CONTENT" && typeof chunk.delta === "string")
-          text += chunk.delta;
-        if (text.length > MAX_OUTPUT) break;
+  return (system, user, signal) =>
+    boundedHelperCall(async (abortController) => {
+      let text = "";
+      const stream = chat({
+        adapter: adapter(model),
+        messages: [{ role: "user", content: user }],
+        systemPrompts: [system],
+        abortController,
+      });
+      try {
+        for await (const chunk of stream as AsyncIterable<{ type: string; delta?: string }>) {
+          if (chunk.type === "RUN_ERROR") throw new Error("Helper model call failed");
+          if (chunk.type === "TEXT_MESSAGE_CONTENT" && typeof chunk.delta === "string")
+            text += chunk.delta;
+          if (text.length > MAX_OUTPUT) break;
+        }
+        return text;
+      } finally {
+        // Stop transport on completion or output limit as well as timeout/cancellation.
+        abortController.abort();
       }
-    } catch (error) {
-      if (timedOut) throw new Error("Helper model timed out");
-      throw error;
-    } finally {
-      clearTimeout(timer);
-    }
-    if (timedOut) throw new Error("Helper model timed out");
-    if (abortController.signal.aborted) throw new Error("Helper call was cancelled");
-    return text;
-  };
+    }, signal);
 }
 
 export function helperTools(run: HelperRunner, signal?: AbortSignal): ToolDefinition[] {

@@ -205,3 +205,67 @@ test("listByIds matches list plus id filtering, and reads nothing for no ids", a
     await store.close();
   }
 });
+
+test("Google quota failure does not block files/browser workspace; direct reads still fail", async () => {
+  const { WorkspaceService } = await import("../apps/server/src/workspace.ts");
+  const store = await createStore();
+  try {
+    const config = {
+      mode: "live",
+      agentBackend: "sample",
+      workerUrl: "https://worker.example",
+      workerToken: "fixture",
+    } as unknown as import("../apps/server/src/config.ts").Config;
+    const auth = {
+      tokens: async () => ({
+        connectionId: "google-1",
+        account: "fixture@example.com",
+        scopes: [],
+      }),
+    };
+    const workspace = new WorkspaceService(
+      store,
+      config,
+      { list: async () => [{ id: "pdf" }] } as never,
+      auth as never,
+    );
+    const calendar = [{ id: "event", start: "2026-11-10T10:00:00Z" }];
+    let mailFails = true;
+    let calendarFails = false;
+    workspace.google = () =>
+      ({
+        listMail: async () => {
+          if (mailFails) throw new Error("Google API (403): Quota exceeded");
+          return [];
+        },
+        listEvents: async () => {
+          if (calendarFails) throw new Error("Calendar unavailable");
+          return calendar;
+        },
+      }) as never;
+    await store.put("owner", "browsers", { id: "browser", status: "active" });
+    await store.put("other-owner", "browsers", { id: "private", status: "active" });
+    const result = await workspace.snapshot("owner");
+    assert.match(result.sourceErrors?.mail ?? "", /Gmail is unavailable/);
+    assert.equal(result.sourceErrors?.calendar, undefined);
+    assert.deepEqual(result.mail, []);
+    assert.deepEqual(result.events, calendar);
+    assert.equal(result.files[0]?.id, "pdf");
+    assert.deepEqual(
+      result.browsers.map((b) => b.id),
+      ["browser"],
+    );
+    assert.equal(result.connections.find((c) => c.id === "browser")?.status, "connected");
+    await assert.rejects(workspace.sectionSnapshot("owner", "mail"), /Quota exceeded/);
+    mailFails = false;
+    calendarFails = true;
+    const partial = await workspace.snapshot("owner");
+    assert.equal(partial.sourceErrors?.mail, undefined);
+    assert.match(partial.sourceErrors?.calendar ?? "", /Calendar is unavailable/);
+    await assert.rejects(workspace.sectionSnapshot("owner", "calendar"), /Calendar unavailable/);
+    calendarFails = false;
+    assert.equal((await workspace.snapshot("owner")).sourceErrors, undefined);
+  } finally {
+    await store.close();
+  }
+});
