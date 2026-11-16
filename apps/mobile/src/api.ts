@@ -29,11 +29,12 @@ export class MuseApi {
 
 export async function createSession(
   accessKey?: string,
+  supabaseToken?: string,
 ): Promise<{ token: string; mode: "sample" | "live" }> {
   const response = await fetch(`${API_URL}/api/session`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ accessKey }),
+    body: JSON.stringify({ accessKey, supabaseToken }),
   });
   const payload = await readApiPayload<{ token: string; mode: "sample" | "live" }>(
     response,

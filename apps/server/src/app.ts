@@ -114,22 +114,32 @@ export async function createApp(
       browserConfigured: Boolean(config.workerUrl && config.workerToken),
     }),
   );
-  let loginWindow = 0,
-    loginAttempts = 0;
-  app.post("/api/session", async (c) => {
-    if (Date.now() - loginWindow > 60000) {
-      loginWindow = Date.now();
-      loginAttempts = 0;
-    }
-    if (++loginAttempts > 30)
-      throw new AppError("Too many sign-in attempts. Try again in a minute.", 429);
-    const body = z.object({ accessKey: z.string().optional() }).parse(await c.req.json());
-    const session = await auth.session(body.accessKey);
-    await workspace.ensureSample("local-user", actions);
-    await agent.ensure("local-user");
-    if (config.mode === "sample") await agent.refreshIdeas("local-user");
-    return c.json(session);
-  });
+  app.get("/api/auth/config", (c) =>
+    c.json({
+      provider: config.authProvider ?? "key",
+      ...(config.authProvider
+        ? { url: config.storageUrl, publishableKey: config.authPublishableKey }
+        : {}),
+    }),
+  );
+  app.post(
+    "/api/session",
+    rateLimit(Boolean(config.trustProxy), { maxRequests: 30 }),
+    async (c) => {
+      const body = z
+        .object({
+          accessKey: z.string().max(1024).optional(),
+          supabaseToken: z.string().max(16384).optional(),
+        })
+        .parse(await c.req.json());
+      const session = await auth.session(body.accessKey, body.supabaseToken);
+      const owner = await auth.owner(`Bearer ${session.token}`);
+      await workspace.ensureSample(owner, actions);
+      await agent.ensure(owner);
+      if (config.mode === "sample") await agent.refreshIdeas(owner);
+      return c.json(session);
+    },
+  );
   app.get("/api/google/callback", async (c) => {
     if (c.req.query("error"))
       return c.html("<h1>Google connection cancelled</h1><p>You can return to OpenMuse.</p>", 400);

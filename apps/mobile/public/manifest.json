@@ -1,7 +1,7 @@
 {
-  "name": "OpenMuse — a little room for everything",
-  "short_name": "OpenMuse",
-  "description": "A little room for your day.",
+  "name": "Zee Spark",
+  "short_name": "Zee Spark",
+  "description": "Your ideas. Your work. One place.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

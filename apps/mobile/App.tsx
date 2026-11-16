@@ -8,15 +8,17 @@ import {
   Menu,
   MessageCircle,
   PanelsTopLeft,
+  Plus,
   Settings as SettingsIcon,
   Shapes,
   SquareCheck,
   X,
 } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -35,10 +37,20 @@ import {
 import { AgentWorkspaceProvider, useAgentWorkspace } from "./src/agent-workspace";
 import { API_URL, createSession, MuseApi } from "./src/api";
 import { ChatScreen, WorkspaceTools } from "./src/chat";
+import { ChatSidebar } from "./src/chat-sidebar";
 import { ComputerEntry } from "./src/computer";
 import { ComputerDraftProvider } from "./src/computer-drafts";
 import { Details } from "./src/details";
 import { DotsScreen } from "./src/dots";
+import { type StringKey, t } from "./src/i18n";
+import {
+  changeLoginPassword,
+  type LoginConfig,
+  passwordLogin,
+  rememberedLogin,
+  rememberLogin,
+  requestAccountEmail,
+} from "./src/login";
 import { SettingsSheet } from "./src/SettingsSheet";
 import { BrowserScreen, CalendarScreen, FilesScreen, MailScreen } from "./src/screens";
 import {
@@ -56,12 +68,12 @@ import { Button, Card, colors, ErrorNotice, Field, IconButton, Mascot, s } from 
 import { wakeWorkerOnce } from "./src/worker-wake";
 import { type Detail, useWorkspace, WorkspaceContext } from "./src/workspace";
 
-const nav: { id: Section; label: string; icon: LucideIcon }[] = [
-  { id: "chat", label: "Chat", icon: MessageCircle },
-  { id: "activity", label: "Activity", icon: PanelsTopLeft },
-  { id: "ideas", label: "Ideas", icon: Lightbulb },
-  { id: "goals", label: "Goals", icon: SquareCheck },
-  { id: "apps", label: "Apps", icon: Shapes },
+const nav: { id: Section; labelKey: StringKey; icon: LucideIcon }[] = [
+  { id: "chat", labelKey: "nav.chat", icon: MessageCircle },
+  { id: "activity", labelKey: "nav.activity", icon: PanelsTopLeft },
+  { id: "ideas", labelKey: "nav.ideas", icon: Lightbulb },
+  { id: "goals", labelKey: "nav.goals", icon: SquareCheck },
+  { id: "apps", labelKey: "nav.apps", icon: Shapes },
 ];
 const titles: Partial<Record<Section, { title: string; subtitle: string }>> = {
   activity: { title: "Activity", subtitle: "Plans, progress, decisions and results." },
@@ -82,15 +94,22 @@ const titles: Partial<Record<Section, { title: string; subtitle: string }>> = {
   files: { title: "Files", subtitle: "Documents, forms and filled copies." },
 };
 export default function App() {
+  const loginGeneration = useRef(0);
   const [token, setToken] = useState("");
+  const [loginConfig, setLoginConfig] = useState<LoginConfig>({ provider: "key" });
+  const [notice, setNotice] = useState("");
+  const [creatingAccount, setCreatingAccount] = useState(false);
+  const [recoveryToken, setRecoveryToken] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [accessKey, setAccessKey] = useState("");
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
-  const connect = useCallback(async (key?: string) => {
+  const connect = useCallback(async (key?: string, supabaseToken?: string) => {
     setBusy(true);
     setError("");
     try {
-      const session = await createSession(key);
+      const session = await createSession(key, supabaseToken);
       setToken(session.token);
       if (key) void saveAccessKey(key);
     } catch (e) {
@@ -108,28 +127,125 @@ export default function App() {
     void saveSettings(next);
   }, []);
   const signOut = useCallback(() => {
+    loginGeneration.current++;
+    if (token)
+      void new MuseApi(token)
+        .request("/api/session", undefined, "DELETE")
+        .catch(() =>
+          setError(
+            "Signed out on this device. The login service could not confirm sign-out; try signing in and out again when it is available.",
+          ),
+        );
+    void rememberLogin(null);
+    setPassword("");
     void clearAccessKey();
     setAccessKey("");
     setToken("");
     setSettingsOpen(false);
-  }, []);
+  }, [token]);
   useEffect(() => {
     void (async () => {
       const stored = await loadSettings();
       applySettings(stored);
       setSettings(stored);
       setSettingsReady(true);
+      const response = await fetch(`${API_URL}/api/auth/config`);
+      if (!response.ok) throw new Error("Could not load sign-in settings. Try reloading.");
+      const config: LoginConfig = await response.json();
+      setLoginConfig(config);
+      if (config.provider === "supabase") {
+        await clearAccessKey();
+        if (Platform.OS === "web" && typeof window !== "undefined" && window.location.hash) {
+          const params = new URLSearchParams(window.location.hash.slice(1));
+          const recovered = params.get("access_token");
+          window.history.replaceState(null, "", window.location.pathname + window.location.search);
+          if (recovered && params.get("type") === "recovery") {
+            await createSession(undefined, recovered);
+            setRecoveryToken(recovered);
+            setNotice("Choose a new password for your account.");
+            setBusy(false);
+            return;
+          }
+          if (params.get("type") === "signup") setNotice("Email verified. You can sign in now.");
+        }
+        const saved = await rememberedLogin();
+        if (saved) {
+          const next = await passwordLogin(config, { refresh_token: saved.refresh_token });
+          await rememberLogin(next);
+          await connect(undefined, next.access_token);
+        } else setBusy(false);
+        return;
+      }
       const remembered = await loadAccessKey();
       // Only auto-connect with a remembered key; a keyless attempt against a
       // live server just surfaces "Access key is incorrect" on a fresh visit.
       if (remembered) void connect(remembered);
       else setBusy(false);
-    })();
+    })().catch((e) => {
+      setError(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+    });
   }, [connect]);
+  useEffect(() => {
+    if (!token || loginConfig.provider !== "supabase") return;
+    const timer = setInterval(() => {
+      void (async () => {
+        const saved = await rememberedLogin();
+        if (saved && saved.expires_at * 1000 < Date.now() + 120000) {
+          const generation = loginGeneration.current;
+          const next = await passwordLogin(loginConfig, { refresh_token: saved.refresh_token });
+          if (generation !== loginGeneration.current) return;
+          await rememberLogin(next);
+          if (generation !== loginGeneration.current) {
+            await rememberLogin(null);
+            return;
+          }
+          setToken(next.access_token);
+        }
+      })().catch(() => {
+        setToken("");
+        setError("Session expired. Sign in again.");
+      });
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [token, loginConfig]);
+  const signIn = async () => {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      if (creatingAccount || recoveryToken) {
+        if (password.length < 12) throw new Error("Use at least 12 characters for your password.");
+        if (recoveryToken) {
+          await changeLoginPassword(loginConfig, recoveryToken, password);
+          setRecoveryToken("");
+          await rememberLogin(null);
+          setNotice("Password updated. Sign in with your new password.");
+        } else {
+          await requestAccountEmail(loginConfig, email.trim(), password);
+          setCreatingAccount(false);
+          setNotice(
+            "Check your email for a verification link. If you already have an account, sign in instead.",
+          );
+        }
+        setPassword("");
+        return;
+      }
+      const session = await passwordLogin(loginConfig, { email: email.trim(), password });
+      await createSession(undefined, session.access_token);
+      await rememberLogin(session);
+      setPassword("");
+      setToken(session.access_token);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
   if (!settingsReady)
     return (
       <SafeAreaProvider>
-        <StatusBar style="dark" />
+        <StatusBar style={settings.theme === "dark" ? "light" : "dark"} />
         <SafeAreaView
           style={{
             flex: 1,
@@ -144,7 +260,7 @@ export default function App() {
     );
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" />
+      <StatusBar style={settings.theme === "dark" ? "light" : "dark"} />
       <SettingsSheet
         visible={settingsOpen}
         settings={settings}
@@ -174,36 +290,118 @@ export default function App() {
             padding: 24,
           }}
         >
-          <View style={{ width: "100%", maxWidth: 420, gap: 22, alignItems: "center" }}>
+          <ScrollView
+            style={{ width: "100%", maxWidth: 420 }}
+            contentContainerStyle={{ gap: 22, alignItems: "center", paddingVertical: 18 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             {settings.mascot && <Mascot size={72} />}
             <Text
               style={{ fontSize: 32, color: colors.text, letterSpacing: -1, fontWeight: "500" }}
             >
               Welcome to {settings.appName}.
             </Text>
-            <Text style={[s.muted, { textAlign: "center" }]}>A little room for your day.</Text>
+            <Text style={[s.muted, { textAlign: "center" }]}>
+              Your ideas. Your work. One place.
+            </Text>
             {busy ? (
               <ActivityIndicator color={colors.blueDark} />
             ) : (
               <Card style={{ width: "100%" }}>
                 <ErrorNotice error={error} />
-                <Field
-                  label="Workspace access key"
-                  value={accessKey}
-                  onChangeText={setAccessKey}
-                  secureTextEntry
-                  placeholder="Required for a live workspace"
-                />
-                <Button primary onPress={() => void connect(accessKey || undefined)}>
-                  Open workspace
-                </Button>
-                <Text style={[s.small, { marginTop: 15 }]}>
-                  Local workspaces open without a key. Make sure your OpenMuse server is running at{" "}
-                  {API_URL}.
-                </Text>
+                {notice ? <Text style={[s.small, { marginBottom: 12 }]}>{notice}</Text> : null}
+                {loginConfig.provider === "supabase" ? (
+                  <>
+                    {!recoveryToken && (
+                      <Field
+                        label="Email"
+                        value={email}
+                        onChangeText={setEmail}
+                        autoCapitalize="none"
+                        keyboardType="email-address"
+                        autoComplete="email"
+                      />
+                    )}
+                    <Field
+                      label={recoveryToken ? "New password" : "Password"}
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry
+                      autoComplete={
+                        creatingAccount || recoveryToken ? "new-password" : "current-password"
+                      }
+                    />
+                    <Button primary onPress={() => void signIn()}>
+                      {recoveryToken
+                        ? "Save new password"
+                        : creatingAccount
+                          ? "Create account"
+                          : "Sign in"}
+                    </Button>
+                    {!recoveryToken && (
+                      <>
+                        <Button
+                          onPress={() => {
+                            setCreatingAccount(!creatingAccount);
+                            setError("");
+                            setNotice("");
+                          }}
+                        >
+                          {creatingAccount
+                            ? "Already have an account? Sign in"
+                            : "Create an account"}
+                        </Button>
+                        {!creatingAccount && (
+                          <Button
+                            onPress={() => {
+                              if (!email.trim()) {
+                                setError("Enter your email first.");
+                                return;
+                              }
+                              setBusy(true);
+                              setError("");
+                              void requestAccountEmail(loginConfig, email.trim())
+                                .then(() =>
+                                  setNotice(
+                                    "If an account exists, you will receive a password reset email.",
+                                  ),
+                                )
+                                .catch((e) => setError(e.message))
+                                .finally(() => setBusy(false));
+                            }}
+                          >
+                            Forgot password?
+                          </Button>
+                        )}
+                      </>
+                    )}
+                    <Text style={[s.small, { marginTop: 15 }]}>
+                      Your own private workspace. Verify your email before signing in. Passwords are
+                      checked by Supabase, not saved in this app.
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Field
+                      label="Workspace access key"
+                      value={accessKey}
+                      onChangeText={setAccessKey}
+                      secureTextEntry
+                      placeholder="Required for a live workspace"
+                    />
+                    <Button primary onPress={() => void connect(accessKey || undefined)}>
+                      Open workspace
+                    </Button>
+                    <Text style={[s.small, { marginTop: 15 }]}>
+                      Local workspaces open without a key. Make sure your OpenMuse server is running
+                      at {API_URL}.
+                    </Text>
+                  </>
+                )}
               </Card>
             )}
-          </View>
+          </ScrollView>
         </SafeAreaView>
       )}
     </SafeAreaProvider>
@@ -333,6 +531,7 @@ function WorkspaceShell({
   const { data } = useAgentWorkspace();
   const {
     selection,
+    start: startChat,
     visited,
     mainId,
     loading: threadsLoading,
@@ -383,20 +582,39 @@ function WorkspaceShell({
   return (
     <>
       <WorkspaceTools />
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top", "bottom"]}>
-        <View style={{ flex: 1, width: "100%", maxWidth: 760, alignSelf: "center" }}>
+      <SafeAreaView
+        style={{ flex: 1, flexDirection: "row", backgroundColor: colors.canvas }}
+        edges={["top", "bottom"]}
+      >
+        {desktop && (
+          <ChatSidebar
+            name={agentName}
+            onManage={() => setThreadsOpen(true)}
+            onSettings={onOpenSettings}
+          />
+        )}
+        <View
+          style={{
+            flex: 1,
+            minWidth: 0,
+            width: "100%",
+            maxWidth: 1060,
+            alignSelf: "stretch",
+            marginHorizontal: "auto",
+          }}
+        >
           <View
             style={{
-              height: desktop ? 146 : 122,
+              height: desktop ? 94 : 96,
               paddingTop: desktop ? 14 : 2,
               marginHorizontal: 20,
             }}
           >
             <View style={{ position: "absolute", left: 0, top: 16 }}>
               <IconButton
-                icon={Menu}
-                label="Open conversations and menu"
-                onPress={() => setThreadsOpen(true)}
+                icon={desktop ? Plus : Menu}
+                label={desktop ? t("header.startNewChat") : t("header.openMenu")}
+                onPress={() => (desktop ? startChat() : setThreadsOpen(true))}
               />
             </View>
             <View pointerEvents="box-none" style={{ alignItems: "center", gap: 1 }}>
@@ -410,7 +628,7 @@ function WorkspaceShell({
                   opacity: pressed ? 0.65 : 1,
                 })}
               >
-                {mascot && <Mascot size={desktop ? 58 : 49} variant={data?.identity.avatar} />}
+                {mascot && <Mascot size={26} variant={data?.identity.avatar} />}
                 <Text
                   style={{
                     fontSize: 16,
@@ -431,7 +649,11 @@ function WorkspaceShell({
               {section === "chat" && <ComputerEntry />}
             </View>
             <View style={{ position: "absolute", right: 0, top: 16, flexDirection: "row", gap: 4 }}>
-              <IconButton icon={SettingsIcon} label="Open app settings" onPress={onOpenSettings} />
+              <IconButton
+                icon={SettingsIcon}
+                label={t("header.openSettings")}
+                onPress={onOpenSettings}
+              />
               <IconButton
                 icon={Bell}
                 label={`Notifications, ${pending} unread or pending`}
@@ -510,12 +732,13 @@ function WorkspaceShell({
                         thread={thread}
                         active={section === "chat" && selection.id === thread.id}
                         prompt={selection.id === thread.id ? prompt : undefined}
+                        appName={agentName}
                       />
                     </View>
                   ))}
                 </>
               ) : (
-                <ChatScreen prompt={prompt} active={section === "chat"} />
+                <ChatScreen prompt={prompt} active={section === "chat"} appName={agentName} />
               )}
             </View>
           </View>
@@ -533,7 +756,7 @@ function WorkspaceShell({
                 width: "100%",
                 maxWidth: 370,
                 padding: 5,
-                backgroundColor: "#FFF",
+                backgroundColor: colors.raised,
                 borderRadius: 40,
                 shadowColor: "#132631",
                 shadowOffset: { width: 0, height: 2 },
@@ -541,7 +764,7 @@ function WorkspaceShell({
                 shadowRadius: 18,
                 elevation: 3,
                 borderWidth: 1,
-                borderColor: "#F8F8F8",
+                borderColor: colors.line,
               }}
             >
               {nav.map((item) => {
@@ -550,19 +773,22 @@ function WorkspaceShell({
                   <Pressable
                     key={item.id}
                     accessibilityRole="tab"
-                    accessibilityLabel={item.label}
+                    accessibilityLabel={t(item.labelKey)}
                     accessibilityState={{ selected: active }}
                     onPress={() => navigate(item.id)}
                     style={{
                       flex: 1,
-                      height: 47,
+                      height: 51,
                       alignItems: "center",
                       justifyContent: "center",
-                      backgroundColor: active ? "#F0F1F2" : "transparent",
+                      backgroundColor: active ? colors.surface : "transparent",
                       borderRadius: 28,
                     }}
                   >
-                    <item.icon size={23} strokeWidth={1.8} color={colors.text} />
+                    <item.icon size={19} strokeWidth={1.8} color={colors.text} />
+                    <Text style={{ fontSize: 9, marginTop: 3, color: colors.text }}>
+                      {t(item.labelKey)}
+                    </Text>
                   </Pressable>
                 );
               })}

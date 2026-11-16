@@ -1,12 +1,11 @@
 import { useCallback, useState } from "react";
-import { Linking, Text, type TextStyle } from "react-native";
+import { Linking, Platform, Pressable, Text, type TextStyle, View } from "react-native";
 import Markdown, { type MarkdownStyles, type RenderRules } from "react-native-markdown-renderer";
 import { assistantMarkdown, isSafeAssistantUrl } from "./assistant-markdown";
 import { colors, ErrorNotice } from "./ui";
 
-const textStyle = { color: colors.text, fontSize: 16, lineHeight: 24 };
 const buildStyle = (): Partial<MarkdownStyles> => ({
-  text: textStyle,
+  text: { color: colors.text, fontSize: 16, lineHeight: 24 },
   paragraph: { marginTop: 0, marginBottom: 6 },
   list: { marginBottom: 6 },
   headingContainer: { marginTop: 8, marginBottom: 4 },
@@ -14,8 +13,8 @@ const buildStyle = (): Partial<MarkdownStyles> => ({
   heading2: { fontSize: 19, lineHeight: 25 },
   heading3: { fontSize: 17, lineHeight: 23 },
   link: { color: colors.blueDark, textDecorationLine: "underline" },
-  codeInline: { backgroundColor: "#E2E4E7", color: colors.text },
-  codeBlock: { backgroundColor: "#E2E4E7", color: colors.text },
+  codeInline: { backgroundColor: colors.codeBg, color: colors.text },
+  codeBlock: { backgroundColor: colors.codeBg, color: colors.text },
 });
 const renderCodeBlock: RenderRules["fence"] = (node, _children, _parent, styles) => (
   <Text key={node.key} selectable style={styles.codeBlock as TextStyle}>
@@ -24,7 +23,7 @@ const renderCodeBlock: RenderRules["fence"] = (node, _children, _parent, styles)
 );
 const rules: RenderRules = {
   textgroup: (node, children) => (
-    <Text key={node.key} selectable style={textStyle}>
+    <Text key={node.key} selectable style={{ color: colors.text, fontSize: 16, lineHeight: 24 }}>
       {children}
     </Text>
   ),
@@ -38,6 +37,7 @@ const rules: RenderRules = {
 };
 
 export function AssistantResponse({ content }: { content: string }) {
+  const [copied, setCopied] = useState(false);
   const [linkError, setLinkError] = useState("");
   const onLinkPress = useCallback((url: string) => {
     if (!isSafeAssistantUrl(url)) return false;
@@ -57,6 +57,32 @@ export function AssistantResponse({ content }: { content: string }) {
       >
         {content}
       </Markdown>
+      {Platform.OS === "web" && (
+        <View style={{ flexDirection: "row", marginTop: 8 }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Copy response"
+            onPress={() => {
+              if (typeof navigator === "undefined" || !navigator.clipboard) {
+                setLinkError("Copy is unavailable here. Select the response text to copy it.");
+                return;
+              }
+              void navigator.clipboard
+                .writeText(content)
+                .then(() => {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                })
+                .catch(() => setLinkError("Could not copy. Select the response text to copy it."));
+            }}
+            style={{ paddingVertical: 6, paddingHorizontal: 8 }}
+          >
+            <Text style={{ color: colors.muted, fontSize: 12 }}>
+              {copied ? "Copied" : "Copy response"}
+            </Text>
+          </Pressable>
+        </View>
+      )}
       <ErrorNotice error={linkError} />
     </>
   );

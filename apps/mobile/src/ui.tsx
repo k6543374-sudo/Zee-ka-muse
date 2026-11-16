@@ -15,103 +15,145 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-export const colors = {
+
+const lightPalette = {
   canvas: "#FCFCFC",
   card: "#FFFFFF",
   text: "#11191C",
   muted: "#697176",
   line: "#EEEEF0",
-  blue: "#C8E7FF",
-  blueDark: "#1473C8",
   sky: "#EDF7FD",
   green: "#E3F3E8",
   lavender: "#F0EEFA",
   orange: "#FDF0DF",
   danger: "#AA4A45",
+  surface: "#F1F2F3",
+  raised: "#FFFFFF",
+  sidebar: "#F4F5F9",
+  sidebarActive: "#E4E8F2",
+  bubbleUser: "#EEF1F8",
+  bubbleBusy: "#EEEEF0",
+  codeBg: "#E2E4E7",
+  borderSoft: "#EEF0F2",
+  focusBorder: "#C7E4F9",
+  errorBg: "#FBEFED",
+  onAccent: "#11191C",
 };
-export const s = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center" },
-  between: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  text: { color: colors.text, fontSize: 15, lineHeight: 23 },
-  muted: { color: colors.muted, fontSize: 14, lineHeight: 21 },
-  small: { color: colors.muted, fontSize: 11, lineHeight: 17 },
-  label: {
-    color: colors.muted,
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-  },
-  title: { color: colors.text, fontSize: 23, fontWeight: "600", letterSpacing: -0.7 },
-  heading: { color: colors.text, fontSize: 16, fontWeight: "600", letterSpacing: -0.25 },
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: 23,
-    borderWidth: 0,
-    borderColor: colors.line,
-    padding: 20,
-  },
-  divider: { height: 1, backgroundColor: colors.line, marginVertical: 18 },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: 19,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    color: colors.text,
-    fontSize: 16,
-    backgroundColor: "#FFF",
-    minHeight: 45,
-  },
-  field: { gap: 7, marginBottom: 16 },
-  button: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingHorizontal: 17,
-    minHeight: 42,
-    paddingVertical: 10,
-    borderRadius: 24,
-  },
-  primary: { backgroundColor: colors.blue },
-  secondary: { backgroundColor: "#F1F2F3" },
-  buttonText: { fontSize: 14, fontWeight: "600" },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-    alignSelf: "flex-start",
-    backgroundColor: colors.canvas,
-  },
-  chipText: { fontSize: 10, fontWeight: "600", color: colors.muted },
-  iconBox: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: colors.sky,
-  },
-  error: { padding: 16, borderRadius: 14, backgroundColor: "#FBEFED", marginVertical: 10, gap: 4 },
-  modalShade: {
-    flex: 1,
-    backgroundColor: "rgba(35,48,44,0.25)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  sheet: {
-    backgroundColor: colors.canvas,
-    borderRadius: 26,
-    width: "100%",
-    maxWidth: 790,
-    maxHeight: "94%",
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-});
+const darkPalette: typeof lightPalette = {
+  canvas: "#0F1519",
+  card: "#182228",
+  text: "#ECF1F3",
+  muted: "#93A1A8",
+  line: "#2A343B",
+  sky: "#152B3A",
+  green: "#16301F",
+  lavender: "#241F33",
+  orange: "#33281A",
+  danger: "#E08B84",
+  surface: "#212B32",
+  raised: "#1B252C",
+  sidebar: "#121A20",
+  sidebarActive: "#22313B",
+  bubbleUser: "#23313B",
+  bubbleBusy: "#212B32",
+  codeBg: "#232E35",
+  borderSoft: "#2A343B",
+  focusBorder: "#1D5C96",
+  errorBg: "#3A2422",
+  onAccent: "#FFFFFF",
+};
+export type ThemeMode = "light" | "dark";
+export const colors = {
+  blue: "#C8E7FF",
+  blueDark: "#1473C8",
+  ...lightPalette,
+};
+/** Switch every themeable surface between the light and dark palettes. */
+export function applyTheme(mode: ThemeMode): void {
+  Object.assign(colors, mode === "dark" ? darkPalette : lightPalette);
+  s = buildStyles();
+}
+const buildStyles = () =>
+  StyleSheet.create({
+    row: { flexDirection: "row", alignItems: "center" },
+    between: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    text: { color: colors.text, fontSize: 15, lineHeight: 23 },
+    muted: { color: colors.muted, fontSize: 14, lineHeight: 21 },
+    small: { color: colors.muted, fontSize: 11, lineHeight: 17 },
+    label: {
+      color: colors.muted,
+      fontSize: 10,
+      fontWeight: "700",
+      letterSpacing: 1.4,
+      textTransform: "uppercase",
+    },
+    title: { color: colors.text, fontSize: 23, fontWeight: "600", letterSpacing: -0.7 },
+    heading: { color: colors.text, fontSize: 16, fontWeight: "600", letterSpacing: -0.25 },
+    card: {
+      backgroundColor: colors.line,
+      borderRadius: 23,
+      borderWidth: 0,
+      borderColor: colors.line,
+      padding: 20,
+    },
+    divider: { height: 1, backgroundColor: colors.line, marginVertical: 18 },
+    input: {
+      borderWidth: 1,
+      borderColor: colors.line,
+      borderRadius: 19,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      color: colors.text,
+      fontSize: 16,
+      minHeight: 45,
+    },
+    field: { gap: 7, marginBottom: 16 },
+    button: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      paddingHorizontal: 17,
+      minHeight: 42,
+      paddingVertical: 10,
+      borderRadius: 24,
+    },
+    buttonText: { fontSize: 14, fontWeight: "600" },
+    chip: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 20,
+      alignSelf: "flex-start",
+    },
+    chipText: { fontSize: 10, fontWeight: "600", color: colors.muted },
+    iconBox: {
+      width: 42,
+      height: 42,
+      borderRadius: 13,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: colors.sky,
+    },
+    error: { padding: 16, borderRadius: 14, marginVertical: 10, gap: 4 },
+    modalShade: {
+      flex: 1,
+      backgroundColor: "rgba(35,48,44,0.25)",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 20,
+    },
+    sheet: {
+      borderRadius: 26,
+      width: "100%",
+      maxWidth: 790,
+      maxHeight: "94%",
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: colors.line,
+    },
+  });
+// Rebuilt on every theme switch so baked-in colour values follow the palette.
+export let s = buildStyles();
 export function Button({
   children,
   onPress,
@@ -133,7 +175,7 @@ export function Button({
   danger?: boolean;
   style?: ViewStyle;
 }) {
-  const color = danger ? colors.danger : colors.text;
+  const color = danger ? colors.danger : primary ? colors.onAccent : colors.text;
   return (
     <Pressable
       accessibilityRole="button"
@@ -142,7 +184,7 @@ export function Button({
       onPress={onPress}
       style={({ pressed }) => [
         s.button,
-        primary ? { backgroundColor: colors.blue } : s.secondary,
+        { backgroundColor: primary ? colors.blue : colors.surface },
         // 44px minimum keeps every tappable control comfortably touchable on phones.
         small && { minHeight: 44, paddingVertical: 9, paddingHorizontal: 14 },
         (disabled || busy) && { opacity: 0.5 },
@@ -180,7 +222,7 @@ export function IconButton({
           alignItems: "center",
           justifyContent: "center",
           borderRadius: 22,
-          backgroundColor: pressed ? colors.line : "#FFFFFF",
+          backgroundColor: pressed ? colors.line : colors.raised,
         },
       ]}
     >
@@ -189,11 +231,11 @@ export function IconButton({
   );
 }
 export function Card({ children, style }: { children: ReactNode; style?: ViewStyle }) {
-  return <View style={[s.card, style]}>{children}</View>;
+  return <View style={[s.card, { backgroundColor: colors.card }, style]}>{children}</View>;
 }
 export function Chip({ children, tint }: { children: ReactNode; tint?: string }) {
   return (
-    <View style={[s.chip, tint ? { backgroundColor: tint } : null]}>
+    <View style={[s.chip, { backgroundColor: tint || colors.canvas }]}>
       <Text style={s.chipText}>{children}</Text>
     </View>
   );
@@ -208,6 +250,7 @@ export function Field({ label, ...props }: TextInputProps & { label: string }) {
         {...props}
         style={[
           s.input,
+          { backgroundColor: colors.raised },
           props.multiline && { minHeight: 120, textAlignVertical: "top" },
           props.style,
         ]}
@@ -239,7 +282,7 @@ export function Empty({
 }
 export function ErrorNotice({ error }: { error?: string }) {
   return error ? (
-    <View accessibilityRole="alert" style={s.error}>
+    <View accessibilityRole="alert" style={[s.error, { backgroundColor: colors.errorBg }]}>
       <Text style={[s.text, { color: colors.danger }]}>{error}</Text>
     </View>
   ) : null;
@@ -267,6 +310,7 @@ export function Sheet({
           accessibilityViewIsModal
           style={[
             s.sheet,
+            { backgroundColor: colors.canvas },
             wide && { maxWidth: 1050 },
             compact && {
               borderBottomLeftRadius: 0,
@@ -334,7 +378,7 @@ export function CheckRow({
           borderRadius: 5,
           borderWidth: 1,
           borderColor: checked ? colors.text : colors.line,
-          backgroundColor: checked ? colors.text : "#FFF",
+          backgroundColor: checked ? colors.text : colors.raised,
           alignItems: "center",
           justifyContent: "center",
         }}
@@ -401,11 +445,11 @@ export function LinkRow({
   );
 }
 let logoOverride: string | null = null;
-/** Override the mascot image app-wide with the user's custom logo; null restores the capybara. */
+/** Override the mascot image app-wide with the user's custom logo; null restores the Zee Spark logo. */
 export function setLogoOverride(uri: string | null): void {
   logoOverride = uri || null;
 }
-/** OpenMuse's original capybara, shared by every assistant surface. */
+/** Zee Spark's logo, shared by every assistant surface. */
 export function Mascot({
   size = 42,
   variant = "sky",
@@ -419,7 +463,7 @@ export function Mascot({
     lilac: "#F1ECF9",
   }[variant];
   return (
-    <View accessibilityLabel="OpenMuse capybara" style={{ width: size, height: size }}>
+    <View accessibilityLabel="Zee Spark logo" style={{ width: size, height: size }}>
       <View
         style={{
           position: "absolute",
@@ -432,9 +476,9 @@ export function Mascot({
         }}
       />
       <Image
-        source={logoOverride ? { uri: logoOverride } : require("../assets/capybara.png")}
+        source={logoOverride ? { uri: logoOverride } : require("../assets/zee-spark-logo.png")}
         resizeMode="contain"
-        style={{ width: size, height: size }}
+        style={{ width: size, height: size, borderRadius: size * 0.22 }}
         accessible={false}
       />
     </View>

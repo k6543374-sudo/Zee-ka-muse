@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { Config } from "./config.ts";
 import type { Store } from "./db.ts";
 import { AppError } from "./errors.ts";
+import { loginOwner } from "./login.ts";
 
 const digest = (value: string) => createHash("sha256").update(value).digest();
 export class Auth {
@@ -12,7 +13,12 @@ export class Auth {
     private readonly config: Config,
     private readonly signingKey: string,
   ) {}
-  async session(accessKey?: string) {
+  async session(accessKey?: string, supabaseToken?: string) {
+    if (this.config.authProvider === "supabase") {
+      const token = supabaseToken ?? "";
+      await this.owner(`Bearer ${token}`);
+      return { token, mode: this.config.mode };
+    }
     if (
       this.config.mode === "live" &&
       (!accessKey ||
@@ -30,6 +36,15 @@ export class Auth {
   }
   async owner(authorization?: string) {
     if (!authorization?.startsWith("Bearer ")) throw new AppError("Sign in to OpenMuse", 401);
+    if (this.config.authProvider === "supabase") {
+      const revoked = await this.db.get(
+        "system",
+        "revoked-login-tokens",
+        digest(authorization.slice(7)).toString("hex"),
+      );
+      if (revoked) throw new AppError("Session expired. Sign in again.", 401);
+      return loginOwner(this.config, authorization.slice(7));
+    }
     const id = digest(authorization.slice(7)).toString("hex");
     const session = await this.db.get<{ owner: string; expiresAt: number }>(
       "system",
@@ -45,6 +60,26 @@ export class Auth {
     return session.owner;
   }
   async revoke(authorization?: string) {
+    if (this.config.authProvider === "supabase") {
+      // Supabase JWTs can remain usable until expiry after provider logout.
+      // Revoke this token locally too, so API access stops immediately.
+      if (authorization?.startsWith("Bearer "))
+        await this.db.put("system", "revoked-login-tokens", {
+          id: digest(authorization.slice(7)).toString("hex"),
+          revokedAt: Date.now(),
+        });
+      const response = await fetch(`${this.config.storageUrl}/auth/v1/logout?scope=local`, {
+        method: "POST",
+        headers: {
+          apikey: this.config.authPublishableKey ?? "",
+          Authorization: authorization ?? "",
+        },
+        signal: AbortSignal.timeout(10000),
+        redirect: "error",
+      });
+      if (!response.ok) throw new AppError("Could not sign out at the login service", 503);
+      return;
+    }
     if (authorization?.startsWith("Bearer "))
       await this.db.remove("system", "sessions", digest(authorization.slice(7)).toString("hex"));
   }

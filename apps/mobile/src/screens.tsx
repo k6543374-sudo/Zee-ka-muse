@@ -869,7 +869,7 @@ export function BrowserScreen() {
             autoCapitalize="none"
             placeholder="https://example.com"
             placeholderTextColor={colors.muted}
-            style={[s.input, { flex: 1 }]}
+            style={[s.input, { flex: 1, backgroundColor: colors.raised }]}
           />
           <Button
             primary

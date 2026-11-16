@@ -2,8 +2,9 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { useEffect, useState } from "react";
 import { Image, Modal, Platform, Pressable, Text, View } from "react-native";
-import { accents, type AccentId, type AppSettings, defaultSettings } from "./settings";
-import { Button, Card, colors, Field, s } from "./ui";
+import { t } from "./i18n";
+import { type AccentId, type AppSettings, accents, defaultSettings } from "./settings";
+import { Button, Card, Field, s, type ThemeMode } from "./ui";
 
 export function SettingsSheet({
   visible,
@@ -22,6 +23,8 @@ export function SettingsSheet({
   const [accent, setAccent] = useState<AccentId>(settings.accent);
   const [mascot, setMascot] = useState(settings.mascot);
   const [logoUri, setLogoUri] = useState(settings.logoUri);
+  const [theme, setTheme] = useState<ThemeMode>(settings.theme);
+  const [language, setLanguage] = useState<AppSettings["language"]>(settings.language);
   const pickLogo = async () => {
     const result = await DocumentPicker.getDocumentAsync({
       type: "image/*",
@@ -51,6 +54,8 @@ export function SettingsSheet({
       setAccent(settings.accent);
       setMascot(settings.mascot);
       setLogoUri(settings.logoUri);
+      setTheme(settings.theme);
+      setLanguage(settings.language);
     }
   }, [visible, settings]);
   return (
@@ -67,15 +72,15 @@ export function SettingsSheet({
       >
         <Pressable onPress={() => {}} style={{ width: "100%", maxWidth: 420 }}>
           <Card>
-            <Text style={[s.title, { fontSize: 20, marginBottom: 16 }]}>App settings</Text>
+            <Text style={[s.title, { fontSize: 20, marginBottom: 16 }]}>{t("settings.title")}</Text>
             <Field
-              label="App display name"
+              label={t("settings.displayName")}
               value={name}
               onChangeText={setName}
-              placeholder="OpenMuse"
+              placeholder="Zee Spark"
               maxLength={30}
             />
-            <Text style={[s.label, { marginBottom: 8 }]}>Accent colour</Text>
+            <Text style={[s.label, { marginBottom: 8 }]}>{t("settings.accent")}</Text>
             <View style={[s.row, { gap: 12, marginBottom: 18 }]}>
               {(Object.keys(accents) as AccentId[]).map((id) => {
                 const pick = accents[id];
@@ -131,6 +136,28 @@ export function SettingsSheet({
               </View>
             </View>
             <View style={[s.between, { marginBottom: 18 }]}>
+              <Text style={s.text}>{t("settings.appearance")}</Text>
+              <View style={[s.row, { gap: 8 }]}>
+                <Button small primary={theme === "light"} onPress={() => setTheme("light")}>
+                  {t("settings.light")}
+                </Button>
+                <Button small primary={theme === "dark"} onPress={() => setTheme("dark")}>
+                  {t("settings.dark")}
+                </Button>
+              </View>
+            </View>
+            <View style={[s.between, { marginBottom: 18 }]}>
+              <Text style={s.text}>{t("settings.language")}</Text>
+              <View style={[s.row, { gap: 8 }]}>
+                <Button small primary={language === "en"} onPress={() => setLanguage("en")}>
+                  English
+                </Button>
+                <Button small primary={language === "hi"} onPress={() => setLanguage("hi")}>
+                  हिंदी
+                </Button>
+              </View>
+            </View>
+            <View style={[s.between, { marginBottom: 18 }]}>
               <Text style={s.text}>Capybara mascot</Text>
               <View style={[s.row, { gap: 8 }]}>
                 <Button small primary={mascot} onPress={() => setMascot(true)}>
@@ -150,25 +177,29 @@ export function SettingsSheet({
                     accent,
                     mascot,
                     logoUri,
+                    theme,
+                    language,
                   });
                   onClose();
                 }}
               >
-                Save
+                {t("settings.save")}
               </Button>
               <Button
                 onPress={() => {
                   setName(defaultSettings.appName);
                   setAccent(defaultSettings.accent);
                   setMascot(defaultSettings.mascot);
+                  setTheme(defaultSettings.theme);
+                  setLanguage(defaultSettings.language);
                 }}
               >
-                Reset
+                {t("settings.reset")}
               </Button>
             </View>
             <View style={s.divider} />
             <Button danger onPress={onSignOut}>
-              Sign out and forget the access key
+              {t("settings.signOut")}
             </Button>
             <Text style={[s.small, { marginTop: 14 }]}>
               Name, colour and mascot update inside the app straight away. The name and icon on your

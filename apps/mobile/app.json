@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "OpenMuse",
+    "name": "Zee Spark",
     "slug": "openmuse",
     "scheme": "openmuse",
     "version": "0.1.0",
@@ -14,13 +14,14 @@
     "android": {
       "package": "app.openmuse.mobile",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/capybara.png",
+        "foregroundImage": "./assets/zee-spark-icon.png",
         "backgroundColor": "#FCFCFC"
       }
     },
     "web": {
       "bundler": "metro",
-      "name": "OpenMuse — a little room for everything"
+      "name": "Zee Spark",
+      "favicon": "./assets/zee-spark-favicon.png"
     },
     "plugins": [
       "expo-document-picker",
@@ -28,9 +29,9 @@
       "@config-plugins/react-native-pdf",
       "expo-secure-store"
     ],
-    "icon": "./assets/capybara.png",
+    "icon": "./assets/zee-spark-icon.png",
     "splash": {
-      "image": "./assets/capybara.png",
+      "image": "./assets/zee-spark-logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#FCFCFC"
     },

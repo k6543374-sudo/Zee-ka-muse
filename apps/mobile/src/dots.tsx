@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useRef, useState } from "react";
 import { Platform, Text, TextInput, View } from "react-native";
 import type { DotPage, DotPageSummary, DotSpace } from "../../../packages/domain/src/dots";
-import { Button, Card, ErrorNotice, Field, s } from "./ui";
+import { Button, Card, colors, ErrorNotice, Field, s } from "./ui";
 import { useWorkspace } from "./workspace";
 
 /** A native-friendly first slice of the OpenDots workspace, not its agent runtime. */
@@ -228,7 +228,7 @@ export function DotsScreen() {
             editable={!busy}
             maxLength={60000}
             textAlignVertical="top"
-            style={[s.input, { minHeight: 280, lineHeight: 23 }]}
+            style={[s.input, { minHeight: 280, lineHeight: 23, backgroundColor: colors.raised }]}
             placeholder="Write here. Save before leaving this screen."
           />
           <Text accessibilityLiveRegion="polite" style={s.muted}>

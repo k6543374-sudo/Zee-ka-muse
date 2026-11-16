@@ -7,7 +7,19 @@ import {
   useRenderTool,
   useRenderToolCall,
 } from "@copilotkit/react-native/headless";
-import { ArrowDown, ArrowUp, FileText, RotateCcw, Square, X } from "lucide-react-native";
+import {
+  ArrowDown,
+  ArrowUp,
+  Bookmark,
+  Download,
+  FileText,
+  GraduationCap,
+  Mic,
+  Paperclip,
+  RotateCcw,
+  Square,
+  X,
+} from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   Keyboard,
@@ -36,13 +48,18 @@ import {
   threadLocked,
 } from "./conversation-run";
 import { DesktopToolCard } from "./desktop-tool-card";
+import { ExportControl } from "./export-control";
+import { t } from "./i18n";
 import { confirmedJevSelection, displayJevUserMessage, latestJevPanelId } from "./jev-actions";
 import { JevInteractionContext, JevToolCard } from "./jev-tool-card";
 import { MailToolCard } from "./mail-tool-card";
+import { PromptsSheet } from "./saved-prompts";
 import { SearchToolCard } from "./search-tool-card";
+import { StudyMode } from "./study-mode";
 import { FileThreadCard, TaskThreadCard } from "./thread-artifacts";
 import { type Selection, useMuseThread } from "./threads";
 import { Button, Card, CheckRow, colors, ErrorNotice, s } from "./ui";
+import { VoiceControls } from "./voice-controls";
 import { useWorkspace } from "./workspace";
 
 const displayParameters = z.record(z.string(), z.unknown());
@@ -281,10 +298,12 @@ export function ChatScreen({
   prompt,
   thread,
   active = true,
+  appName = "Zee Spark",
 }: {
   prompt?: { id: number; text: string };
   thread?: Selection;
   active?: boolean;
+  appName?: string;
 }) {
   const { api, workspace: w, refresh, navigate } = useWorkspace();
   const { data: agentWorkspace, refresh: refreshAgent } = useAgentWorkspace();
@@ -323,6 +342,18 @@ export function ChatScreen({
   // Set while a queued message is being sent, so a lock refusal holds it instead of failing.
   const queuedTurn = useRef(false);
   const [keyboardPadding, setKeyboardPadding] = useState(0);
+  const insertDraft = useCallback(
+    (text: string) => setDraft((current) => (current ? `${current} ${text}` : text)),
+    [],
+  );
+  type Panel = "voice" | "study" | "export" | "prompts";
+  const [panel, setPanel] = useState<Panel | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const openPanel = useCallback((next: Panel) => {
+    setPanel(next);
+    setMenuOpen(false);
+    setPicking(false);
+  }, []);
 
   useEffect(() => {
     if (Platform.OS !== "android") return;
@@ -568,6 +599,9 @@ export function ChatScreen({
     .filter((call) => call.function.name === "use_desktop")
     .at(-1)?.id;
   const replying = busy || agent.isRunning;
+  const latestReply = [...visible]
+    .reverse()
+    .find((m) => m.role === "assistant" && typeof m.content === "string");
   return (
     <View style={{ flex: 1 }}>
       <ScrollView
@@ -600,7 +634,7 @@ export function ChatScreen({
             style={{ alignSelf: "center" }}
             onPress={() => setShownCount((count) => count + 100)}
           >
-            Show {Math.min(hiddenCount, 100)} earlier of {hiddenCount} older messages
+            {t("chat.showEarlier", { n: Math.min(hiddenCount, 100), total: hiddenCount })}
           </Button>
         )}
         {!visible.length ? (
@@ -623,23 +657,22 @@ export function ChatScreen({
                 maxWidth: 350,
               }}
             >
-              A little help. A lot more room for life.
+              {t("chat.emptyTitle")}
             </Text>
             <Text style={[s.muted, { maxWidth: 320, textAlign: "center", lineHeight: 23 }]}>
-              Tell me what’s on your mind. I can make a plan, work with your apps, and use my
-              computer to help.
+              {t("chat.emptySubtitle")}
             </Text>
             <View style={{ width: "100%", maxWidth: 360, marginTop: 14, gap: 8 }}>
               {[
                 {
-                  text: "Find cool things on Hacker News",
+                  text: t("chat.suggestResearch"),
                   action: () => enqueue("Check out Hacker News for cool stuff"),
                 },
                 {
-                  text: "Summarize copilotkit.ai",
-                  action: () => enqueue("Summarize copilotkit.ai"),
+                  text: t("chat.suggestSummarize"),
+                  action: () => enqueue("Summarize a webpage"),
                 },
-                { text: "Keep an eye on a website", action: () => navigate("goals") },
+                { text: t("chat.suggestWatch"), action: () => navigate("goals") },
               ].map((item) => (
                 <Button key={item.text} onPress={item.action}>
                   {item.text}
@@ -678,7 +711,7 @@ export function ChatScreen({
                       borderRadius: 22,
                       borderBottomRightRadius: user ? 7 : 22,
                       borderBottomLeftRadius: user ? 22 : 7,
-                      backgroundColor: user ? colors.blue : "#EEEEF0",
+                      backgroundColor: user ? colors.bubbleUser : "transparent",
                     }}
                   >
                     {user ? (
@@ -805,7 +838,7 @@ export function ChatScreen({
                 gap: 7,
                 paddingHorizontal: 19,
                 paddingVertical: 18,
-                backgroundColor: "#EEEEF0",
+                backgroundColor: colors.bubbleBusy,
                 borderRadius: 28,
               },
             ]}
@@ -853,8 +886,42 @@ export function ChatScreen({
             list.current?.scrollToEnd({ animated: true });
           }}
         >
-          Latest messages
+          {t("chat.latest")}
         </Button>
+      )}
+      {panel === "voice" && (
+        <VoiceControls
+          active={active}
+          busy={replying}
+          reply={typeof latestReply?.content === "string" ? latestReply.content : ""}
+          onTranscript={insertDraft}
+          startOpen
+          onHide={() => setPanel(null)}
+        />
+      )}
+      {panel === "study" && (
+        <StudyMode
+          disabled={!loaded || !isReady}
+          empty={!visible.length}
+          onPick={(text) => {
+            insertDraft(text);
+            setPanel(null);
+          }}
+          startOpen
+          onHide={() => setPanel(null)}
+        />
+      )}
+      {panel === "export" && (
+        <ExportControl
+          messages={visible}
+          appName={appName}
+          disabled={!loaded}
+          startOpen
+          onHide={() => setPanel(null)}
+        />
+      )}
+      {panel === "prompts" && (
+        <PromptsSheet draft={draft} open onUse={insertDraft} onClose={() => setPanel(null)} />
       )}
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -913,6 +980,43 @@ export function ChatScreen({
             )}
           </View>
         )}
+        {menuOpen && (
+          <Card style={{ marginBottom: 12, padding: 8, gap: 2 }}>
+            {[
+              {
+                icon: Paperclip,
+                label: t("composer.attach"),
+                action: () => {
+                  setPicking(true);
+                  setMenuOpen(false);
+                },
+              },
+              { icon: Mic, label: t("voice.mode"), action: () => openPanel("voice") },
+              { icon: GraduationCap, label: t("study.title"), action: () => openPanel("study") },
+              { icon: Download, label: t("export.title"), action: () => openPanel("export") },
+              { icon: Bookmark, label: t("prompts.title"), action: () => openPanel("prompts") },
+            ].map((item) => (
+              <Pressable
+                key={item.label}
+                accessibilityRole="button"
+                accessibilityLabel={item.label}
+                onPress={item.action}
+                style={({ pressed }) => ({
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                  paddingVertical: 12,
+                  paddingHorizontal: 10,
+                  borderRadius: 12,
+                  backgroundColor: pressed ? colors.surface : "transparent",
+                })}
+              >
+                <item.icon size={18} color={colors.text} />
+                <Text style={[s.text, { fontSize: 15 }]}>{item.label}</Text>
+              </Pressable>
+            ))}
+          </Card>
+        )}
         {picking && (
           <Card style={{ marginBottom: 12, padding: 15 }}>
             <Text style={s.heading}>Add a document</Text>
@@ -947,10 +1051,10 @@ export function ChatScreen({
         )}
         <View
           style={{
-            backgroundColor: "#FFF",
+            backgroundColor: colors.raised,
             borderRadius: 32,
             borderWidth: 1,
-            borderColor: focused ? "#C7E4F9" : "#EEF0F2",
+            borderColor: focused ? colors.focusBorder : colors.borderSoft,
             padding: 8,
             shadowColor: "#18384B",
             shadowOpacity: focused ? 0.1 : 0.06,
@@ -996,16 +1100,20 @@ export function ChatScreen({
           <View style={[s.row, { gap: 7, alignItems: "flex-end" }]}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Attach a document"
-              accessibilityState={{ expanded: picking }}
-              onPress={() => setPicking(!picking)}
+              accessibilityLabel={t("composer.menu")}
+              accessibilityState={{ expanded: menuOpen }}
+              onPress={() => {
+                setMenuOpen(!menuOpen);
+                setPicking(false);
+                setPanel(null);
+              }}
               style={({ pressed }) => ({
                 width: 44,
                 height: 44,
                 alignItems: "center",
                 justifyContent: "center",
                 borderRadius: 24,
-                backgroundColor: picking || pressed ? colors.sky : "transparent",
+                backgroundColor: menuOpen || picking || pressed ? colors.sky : "transparent",
               })}
             >
               <Text style={{ color: colors.text, fontSize: 29, fontWeight: "300", lineHeight: 32 }}>
@@ -1013,7 +1121,7 @@ export function ChatScreen({
               </Text>
             </Pressable>
             <TextInput
-              accessibilityLabel="Message OpenMuse"
+              accessibilityLabel="Message Zee Spark"
               value={draft}
               onChangeText={setDraft}
               onContentSizeChange={(event) =>
@@ -1021,14 +1129,14 @@ export function ChatScreen({
               }
               placeholder={
                 !isReady
-                  ? "Connecting…"
+                  ? t("chat.connecting")
                   : !loaded
                     ? historyError
-                      ? "Conversation unavailable"
-                      : "Loading conversation…"
-                    : "Message…"
+                      ? t("chat.unavailable")
+                      : t("chat.loading")
+                    : t("chat.placeholder")
               }
-              placeholderTextColor="#949B9F"
+              placeholderTextColor={colors.muted}
               selectionColor={colors.blueDark}
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
@@ -1063,26 +1171,26 @@ export function ChatScreen({
             />
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={replying ? "Stop reply" : "Send message"}
+              accessibilityLabel={replying ? t("composer.stop") : t("composer.send")}
               disabled={!replying && (!draft.trim() || !loaded || !isReady)}
               onPress={replying ? () => void stop() : send}
               style={({ pressed }) => ({
                 width: 44,
                 height: 44,
                 borderRadius: 24,
-                backgroundColor: replying || draft.trim() ? colors.blue : "#F3F5F6",
+                backgroundColor: replying || draft.trim() ? colors.blue : colors.surface,
                 alignItems: "center",
                 justifyContent: "center",
                 transform: [{ scale: pressed ? 0.94 : 1 }],
               })}
             >
               {replying ? (
-                <Square size={18} fill={colors.text} strokeWidth={0} />
+                <Square size={18} fill={colors.onAccent} strokeWidth={0} />
               ) : (
                 <ArrowUp
                   size={25}
                   strokeWidth={1.8}
-                  color={draft.trim() ? colors.text : "#9CB5C5"}
+                  color={draft.trim() ? colors.onAccent : colors.muted}
                 />
               )}
             </Pressable>

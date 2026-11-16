@@ -38,6 +38,10 @@ export interface Config {
   storageServiceKey?: string;
   storageBucket?: string;
   accessKey?: string;
+  authProvider?: "supabase";
+  authPublishableKey?: string;
+  authOwnerId?: string;
+  authPublicLogin?: boolean;
   encryptionKey?: string;
   model?: string;
   jevMode?: "off" | "sample" | "live";
@@ -105,6 +109,16 @@ export function browserWorkerUrl(value?: string): string | undefined {
 // writes never re-fire here: they are dispatched outside the model loop through
 // reviewed, idempotency-keyed actions.
 export const MODEL_MAX_RETRIES = 2;
+/** Prevent accidentally publishing a server/service-role credential in auth bootstrap. */
+export function isPublicAuthKey(key: string): boolean {
+  if (key.startsWith("sb_publishable_")) return true;
+  try {
+    return JSON.parse(Buffer.from(key.split(".")[1], "base64url").toString()).role === "anon";
+  } catch {
+    return false;
+  }
+}
+
 export function readConfig(): Config {
   const mode = process.env.WORKSPACE_MODE ?? "sample";
   if (mode !== "sample" && mode !== "live")
@@ -147,6 +161,10 @@ export function readConfig(): Config {
     storageServiceKey: process.env.SUPABASE_SERVICE_KEY,
     storageBucket: process.env.SUPABASE_STORAGE_BUCKET?.trim() || "openmuse-files",
     accessKey: process.env.OPENMUSE_ACCESS_KEY,
+    authProvider: process.env.AUTH_PROVIDER === "supabase" ? "supabase" : undefined,
+    authPublishableKey: process.env.SUPABASE_PUBLISHABLE_KEY?.trim(),
+    authOwnerId: process.env.AUTH_OWNER_USER_ID?.trim(),
+    authPublicLogin: process.env.AUTH_PUBLIC_LOGIN === "true",
     encryptionKey: process.env.TOKEN_ENCRYPTION_KEY,
     model: process.env.MODEL,
     jevMode,
@@ -177,13 +195,27 @@ export function readConfig(): Config {
     // behind a proxy that sets them; otherwise a direct caller can spoof them.
     trustProxy: process.env.TRUST_PROXY === "true",
   };
+  if (process.env.AUTH_PROVIDER && process.env.AUTH_PROVIDER !== "supabase")
+    throw new Error("AUTH_PROVIDER must be supabase or unset");
+  if (
+    config.authProvider &&
+    (!config.storageUrl || !config.authPublishableKey || !config.authOwnerId)
+  )
+    throw new Error(
+      "Supabase login needs SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY and AUTH_OWNER_USER_ID",
+    );
+  if (config.authProvider && !isPublicAuthKey(config.authPublishableKey ?? ""))
+    throw new Error(
+      "SUPABASE_PUBLISHABLE_KEY must be a public publishable/anon key, never a secret or service-role key",
+    );
   if (!config.storageUrl !== !config.storageServiceKey)
     throw new Error(
       "File mirroring requires SUPABASE_URL and SUPABASE_SERVICE_KEY together (or neither)",
     );
   if (
     mode === "live" &&
-    (!config.accessKey || config.accessKey.length < 24 || !config.encryptionKey)
+    ((!config.authProvider && (!config.accessKey || config.accessKey.length < 24)) ||
+      !config.encryptionKey)
   )
     throw new Error(
       "Live mode requires OPENMUSE_ACCESS_KEY (24+ characters) and TOKEN_ENCRYPTION_KEY (32-byte base64)",
